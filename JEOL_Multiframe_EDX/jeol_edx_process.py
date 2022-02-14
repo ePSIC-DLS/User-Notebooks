@@ -148,6 +148,7 @@ def shift_si(si, shift):
     si_shift = map(mapfunc, si_t.data)
     si_shift = list(si_shift)
     si_shift = np.asarray(si_shift)
+    si_shift = si_shift.astype('uint8')
     return hs.signals.Signal2D(si_shift)
     
 
