@@ -40,6 +40,7 @@ def save_edx_stack(pts_path, apb_path, save_path, data_name, elements_list):
     print(stack_edx)
     print(f'loaded data {pts_path}')
     stack_edx.save(os.path.join(save_path, data_name), extension='hdf5')
+    stack_edx.save(os.path.join(save_path, data_name), extension='zspy')
     
     stack_edx.add_elements(elements_list)
     stack_edx_sum = stack_edx.sum()
