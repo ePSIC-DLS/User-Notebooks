@@ -16,7 +16,7 @@ import gc
 # - reads the hdf5 file with EDX and image stacks
 # - Performs an alignmnet on the image stack
 # - Based on the index ranges provided the maps are aligned and summed
-# - Optiong to output 3D spectrum image?
+# - Option to output 3D spectrum image
 ###
 
 
@@ -45,6 +45,8 @@ def process_edx_stack(data_path, elements_list, lines_list, ind_to_include, outp
     print(f'Lazily loaded data {data_path}')
     if ind_to_include != "":
         stack_edx = stack_edx.inav[:,:,ind_to_include[0]:ind_to_include[1]]
+        shifts = shifts[ind_to_include[0]:ind_to_include[1]]
+        print('after cropping: ', stack_edx)
     
     binned_eds = stack_edx.rebin(scale=(4,4,1,2))
     binned_eds.add_elements(elements_list)

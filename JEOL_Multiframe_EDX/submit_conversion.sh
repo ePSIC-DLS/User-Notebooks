@@ -3,7 +3,7 @@
 #$ -cwd
 #$ -q high.q
 #$ -l redhat_release=rhel7
-#$ -l m_mem_free=10G
+#$ -l m_mem_free=20G
 #$ -e /dls/science/groups/e02/Mohsen/code/jupyterhub_active/JEOL_EDX_Multiframe/cluster_submit/logs
 #$ -o /dls/science/groups/e02/Mohsen/code/jupyterhub_active/JEOL_EDX_Multiframe/cluster_submit/logs
 
