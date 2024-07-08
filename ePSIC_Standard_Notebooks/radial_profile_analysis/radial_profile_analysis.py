@@ -1,6 +1,7 @@
 # Atomic structure analysis with radial (azimuthal) average & variance profiles
 # Only compatible with the ePSIC data processig workflow
 # Jinseok Ryu (jinseok.ryu@diamond.ac.uk)
+# ePSIC, Diamond Light Source
 import os
 import glob
 from scipy.signal import find_peaks
@@ -27,10 +28,10 @@ class radial_profile_analysis():
     cm_rep = ['Reds', 'Greens', 'Blues', 'Oranges', 'Purples']
     
     def __init__(self, base_dir, subfolders, profile_length, num_load, 
-                 include_key=None, exclude_key=None, verbose=True, exist_radial_mean=True):
+                 include_key=None, exclude_key=None, simult_edx=False, verbose=True):
 
-        self.radial_mean_flag = exist_radial_mean
-
+        edx_split = []
+        edx_avg_split = []
         radial_var_split = []
         radial_var_sum_split = []
         pixel_size_split = []
@@ -39,6 +40,16 @@ class radial_profile_analysis():
         new_process_flag = True
         
         for i, sub in enumerate(subfolders):
+            if simult_edx:
+                edx_adrs = glob.glob(base_dir+'/'+sub+'/*/*/*.rpl', recursive=True)
+                if edx_adrs == []:
+                    edx_adrs = glob.glob(base_dir+'/'+sub+'/*/*.rpl', recursive=True)
+                    if edx_adrs == []:
+                        edx_adrs = glob.glob(base_dir+'/'+sub+'/*.rpl', recursive=True)
+                        if edx_adrs == []:
+                            print("Please make sure that the base directory and subfolder name are correct.")
+                            return                
+
             file_adrs = glob.glob(base_dir+'/'+sub+'/*/*/*.hspy', recursive=True)
             if file_adrs == []:
                 file_adrs = glob.glob(base_dir+'/'+sub+'/*/*.hspy', recursive=True)
@@ -48,7 +59,12 @@ class radial_profile_analysis():
                         print("Please make sure that the base directory and subfolder name are correct.")
                         return
             
-            #print(*file_adrs, sep='\n')
+            file_adrs.sort()
+            try:
+                edx_adrs.sort()
+
+            except:
+                print("No EDX files")
         
             if include_key == []:
                 key_list = []
@@ -65,12 +81,20 @@ class radial_profile_analysis():
                 print("number of data in subfolder '%s'"%sub)
                 print(len(key_list))
                 key_list = np.asarray(key_list)
+
+                if simult_edx:
+                    edx_adrs = np.asarray(edx_adrs)
+                    edx_adrs = edx_adrs[:len(key_list)]
             
                 if len(key_list) >= num_load:
                     ri = np.random.choice(len(key_list), num_load, replace=False)
                     file_adr_ = key_list[ri]
+                    if simult_edx:
+                        edx_adr_ = edx_adrs[ri]
                 else:
                     file_adr_ = key_list
+                    if simult_edx:
+                        edx_adr_ = edx_adrs
         
             else:
                 file_adr_ = []
@@ -78,16 +102,18 @@ class radial_profile_analysis():
                     for key in include_key:
                         if key in adr and "mean" not in adr:
                             file_adr_.append(adr)
+                if simult_edx:
+                    edx_adr_ = edx_adrs
                 print("number of data in subfolder '%s'"%sub)
                 print(len(file_adr_))
-        
-            file_adr_.sort()
-            
+
+            edx_tmp_list = []
+            edx_avg_list = []
             radial_var_list = []
             avg_radial_var_list = []
             file_adr = []
             pixel_size_list = []
-            for adr in file_adr_:
+            for e, adr in enumerate(file_adr_):
                 data = hs.load(adr)
                 print('original profile size = ', data.data.shape[-1])
                 file_adr.append(adr)
@@ -96,13 +122,25 @@ class radial_profile_analysis():
                 local_radial_var_sum = data.mean()
                 pixel_size_inv_Ang = local_radial_var_sum.axes_manager[-1].scale
 
+                if simult_edx:
+                    edx_data = hs.load(edx_adr_[e]).data
+                    edx_data = np.rollaxis(edx_data, 0, 3)[2:, 1:]
+                    edx_data = hs.signals.Signal1D(edx_data)
+
                 if verbose:
                     print(adr)
                     print(data)
                     print("Reciprocal pixel size= ", pixel_size_inv_Ang)
+                    if simult_edx:
+                        print(edx_adr_[e])
+                        print(edx_data)                        
+
                 radial_var_list.append(data)
                 avg_radial_var_list.append(local_radial_var_sum.data)
                 pixel_size_list.append(pixel_size_inv_Ang)
+                if simult_edx:
+                    edx_tmp_list.append(edx_data)
+                    edx_avg_list.append(edx_data.mean().data)                    
         
             avg_radial_var_list = np.asarray(avg_radial_var_list)
             radial_var_split.append(radial_var_list)
@@ -111,36 +149,48 @@ class radial_profile_analysis():
         
             loaded_data_path.append(file_adr)
 
-        if exist_radial_mean:
-            radial_avg_split = []
-            radial_avg_sum_split = []
-            for i, sub in enumerate(subfolders):
-                radial_avg_list = []
-                radial_avg_sum_list = []
-                for adr in loaded_data_path[i]:
-                    dir_path = os.path.dirname(adr)
-                    data_name = os.path.basename(adr).split("_")
-                    data_name = data_name[0]+'_'+data_name[1]
-                    
-                    try:
-                        adr_ = dir_path+"/"+data_name+"_"+'azimuthal_mean.hspy'
-                        data = hs.load(adr_)
-                    except:
-                        adr_ = dir_path+"/"+data_name+"_"+'mean.hspy'
-                        new_process_flag = False
-                        data = hs.load(adr_)
-                        
-                    data.data = data.data[:, :, :profile_length]
-                    local_radial_avg_sum = data.mean()
-                    radial_avg_list.append(data)
-                    radial_avg_sum_list.append(local_radial_avg_sum.data)
-            
-                radial_avg_split.append(radial_avg_list)
-                radial_avg_sum_split.append(radial_avg_sum_list)
+            if simult_edx:
+                edx_avg_list = np.asarray(edx_avg_list)
+                edx_split.append(edx_tmp_list)
+                edx_avg_split.append(edx_avg_list)                
 
-                self.radial_avg_split = radial_avg_split
-                self.radial_avg_sum_split = radial_avg_sum_split
+        # mean profile data load
+        loaded_data_mean_path = []
+        radial_avg_split = []
+        radial_avg_sum_split = []
+        for i, sub in enumerate(subfolders):
+            radial_avg_list = []
+            radial_avg_sum_list = []
+            loaded_data_mean = []
+            for adr in loaded_data_path[i]:
+                dir_path = os.path.dirname(adr)
+                data_name = os.path.basename(adr).split("_")
+                data_name = data_name[0]+'_'+data_name[1]
+                
+                try:
+                    adr_ = dir_path+"/"+data_name+"_"+'azimuthal_mean.hspy'
+                    data = hs.load(adr_)
+                    loaded_data_mean.append(adr_)
+                except:
+                    adr_ = dir_path+"/"+data_name+"_"+'mean.hspy'
+                    new_process_flag = False
+                    data = hs.load(adr_)
+                    loaded_data_mean.append(adr_)
+                    
+                data.data = data.data[:, :, :profile_length]
+                local_radial_avg_sum = data.mean()
+                radial_avg_list.append(data)
+                radial_avg_sum_list.append(local_radial_avg_sum.data)
+
+            loaded_data_mean_path.append(loaded_data_mean)
         
+            radial_avg_split.append(radial_avg_list)
+            radial_avg_sum_split.append(radial_avg_sum_list)
+
+            self.radial_avg_split = radial_avg_split
+            self.radial_avg_sum_split = radial_avg_sum_split
+
+        # aligned center beam image load
         BF_disc_align = []
         for i, sub in enumerate(subfolders):
             BF_disc_list = []
@@ -171,10 +221,9 @@ class radial_profile_analysis():
         self.radial_var_split = radial_var_split
         self.radial_var_sum_split = radial_var_sum_split
         self.pixel_size_split = pixel_size_split
+        self.edx_split = edx_split
         self.loaded_data_path = loaded_data_path
-        self.radial_var_list = radial_var_list
-        self.avg_radial_var_list = avg_radial_var_list
-        self.file_adr = file_adr
+        self.loaded_data_mean_path = loaded_data_mean_path
         self.BF_disc_align = BF_disc_align
         self.new_process_flag = new_process_flag
         
@@ -203,42 +252,26 @@ class radial_profile_analysis():
             plt.show()
 
     def intensity_integration_image(self):
-        if self.radial_mean_flag:     
-            for i in range(len(self.subfolders)):
-                num_img = len(self.radial_avg_split[i])
-                grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
-                else:
-                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
-                for j in range(num_img):
-                    sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
-                    ax.flat[j].imshow(sum_map, cmap='inferno')
-                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                    ax.flat[j].axis("off")
-                fig.suptitle(self.subfolders[i]+' sum of intensities map')
-                fig.tight_layout()
-                plt.show()
-
-        else:
-            for i in range(len(self.subfolders)):
-                num_img = len(self.radial_var_split[i])
-                grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
-                else:
-                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
-                for j in range(num_img):
-                    sum_map = np.sum(self.radial_var_split[i][j].data, axis=2)
-                    ax.flat[j].imshow(sum_map, cmap='inferno')
-                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                    ax.flat[j].axis("off")
-                fig.suptitle(self.subfolders[i]+' sum of variances map')
-                fig.tight_layout()
-                plt.show()
+    
+        for i in range(len(self.subfolders)):
+            num_img = len(self.radial_avg_split[i])
+            grid_size = int(np.around(np.sqrt(num_img)))
+            if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+            else:
+                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+            for j in range(num_img):
+                sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
+                ax.flat[j].imshow(sum_map, cmap='inferno')
+                ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                ax.flat[j].axis("off")
+            fig.suptitle(self.subfolders[i]+' sum of intensities map')
+            fig.tight_layout()
+            plt.show()
 
     
     def basic_setup(self, str_path, from_unit, to_unit, broadening=0.01):
+        print("Original scattering vector range = [%.4f, %.4f]"%(0, self.profile_length*self.pixel_size_inv_Ang))
         
         self.str_path = str_path
         self.from_unit = from_unit
@@ -246,9 +279,9 @@ class radial_profile_analysis():
         
         self.from_ = self.pixel_size_inv_Ang*int(from_unit/self.pixel_size_inv_Ang)
         self.to_ = self.pixel_size_inv_Ang*int(to_unit/self.pixel_size_inv_Ang)
-        self.x_axis = self.pixel_size_inv_Ang * np.arange(self.profile_length)
-        self.x_axis = self.x_axis[int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)]
-
+        self.x_axis = np.arange(self.from_, self.to_, self.pixel_size_inv_Ang)
+        print("Selected scattering vector range = [%.4f, %.4f]"%(self.x_axis.min(), self.x_axis.max()))
+        
         if str_path != []:
             int_sf = {}
             fig, ax = plt.subplots(2, 1, figsize=(8, 12))
@@ -279,8 +312,9 @@ class radial_profile_analysis():
     
             print('structure name')
             print(*int_sf.keys(), sep="\n")
-
-    def sum_radial_profile(self, str_name=None):            
+    
+    
+    def sum_radial_profile(self, str_name=None, profile_type="variance"):            
 
         fig_tot, ax_tot = plt.subplots(2, 1, figsize=(8, 12))
         
@@ -302,19 +336,33 @@ class radial_profile_analysis():
                 tmp_pixel_size = self.pixel_size_split[i][j]
                 from_ = tmp_pixel_size*int(self.from_unit/tmp_pixel_size)
                 to_ = tmp_pixel_size*int(self.to_unit/tmp_pixel_size)
-                x_axis = tmp_pixel_size * np.arange(self.profile_length)
-                x_axis = x_axis[int(from_/tmp_pixel_size):int(to_/tmp_pixel_size)]
+                x_axis = np.arange(from_, to_, tmp_pixel_size)
+
+                if profile_type == "variance":
+                    tmp_sp = sp[int(from_/tmp_pixel_size):int(to_/tmp_pixel_size)]
+                    ax.flat[j].plot(x_axis, tmp_sp, 'k-', label="var_sum")
+                elif profile_type == "mean":
+                    tmp_sp = self.radial_avg_sum_split[i][j][int(from_/tmp_pixel_size):int(to_/tmp_pixel_size)]
+                    ax.flat[j].plot(x_axis, tmp_sp, 'k-', label="mean_sum")
+                else:
+                    print("Warning! wrong profile type!")
+                    return                    
                 
-                tmp_sp = sp[int(from_/tmp_pixel_size):int(to_/tmp_pixel_size)]
-                ax.flat[j].plot(x_axis, tmp_sp, 'k-', label="var_sum")
                 ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
                 ax.flat[j].legend(loc='upper right')
                 
-                if self.radial_mean_flag:
+                
+                ax_twin = ax.flat[j].twinx()
+                if profile_type == "variance":
                     tmp_ap = self.radial_avg_sum_split[i][j][int(from_/tmp_pixel_size):int(to_/tmp_pixel_size)]
-                    ax_twin = ax.flat[j].twinx()
                     ax_twin.plot(x_axis, tmp_ap, 'r:', label="mean_sum")
-                    ax_twin.legend(loc='right')
+                elif profile_type == "mean":
+                    tmp_ap = self.radial_var_sum_split[i][j][int(from_/tmp_pixel_size):int(to_/tmp_pixel_size)]
+                    ax_twin.plot(x_axis, tmp_ap, 'r:', label="var_sum")
+                else:
+                    print("Warning! wrong profile type!")
+                    return    
+                ax_twin.legend(loc='right')
                 
                 ax_sub[1].plot(x_axis, tmp_sp/np.max(tmp_sp), label=self.subfolders[i]+"_"+os.path.basename(self.loaded_data_path[i][j])[:15])
                 ax_sub[1].set_title("max-normalized")
@@ -337,20 +385,63 @@ class radial_profile_analysis():
             ax_sub[1].legend(loc="upper right")
             fig.suptitle(self.subfolders[i]+' - scattering vector range %.3f-%.3f (1/Å)'%(from_, to_))
             fig.tight_layout()
-            fig_sub.suptitle("mean radial variance profiles - scattering vector range %.3f-%.3f (1/Å)"%(from_, to_))
+            if profile_type == "variance":
+                fig_sub.suptitle("mean of radial variance profiles - scattering vector range %.3f-%.3f (1/Å)"%(from_, to_))
+            else:
+                fig_sub.suptitle("mean of radial mean profiles - scattering vector range %.3f-%.3f (1/Å)"%(from_, to_))
             fig_sub.tight_layout()
-        fig_tot.suptitle("Compare the mean radial variance profiles sample by sample")
+        if profile_type == "variance":
+            fig_tot.suptitle("Compare the mean profiles of radial variance profiles between subfolders")
+        else:
+            fig_tot.suptitle("Compare the mean profiles of radial mean profiles between subfolders")
         fig_tot.tight_layout()
         plt.show()
 
-    def NMF_decompose(self, num_comp, max_normalize=False, rescale_0to1=True, verbose=True):
+    
+    def sum_edx(self, edx_from, edx_to, edx_scale=0.001):
+        self.edx_dim = self.edx_split[0][0].data.shape[2]
+        self.edx_range = np.linspace(0.0, self.edx_dim*edx_scale, self.edx_dim)
+
+        self.edx_from = edx_from
+        self.edx_to = edx_to
+        self.edx_scale = edx_scale
+
+        for i in range(len(self.subfolders)):
+            num_img = len(self.edx_split[i])
+            grid_size = int(np.around(np.sqrt(num_img)))
+            if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+            else:
+                fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                
+            for j in range(num_img):
+                edx_sum_map = np.sum(self.edx_split[i][j].data[:, :, int(edx_from/edx_scale):int(edx_to/edx_scale)], axis=2)
+                ax.flat[j*2].imshow(edx_sum_map, cmap='inferno')
+                ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                ax.flat[j*2].axis("off")
+                
+                edx_sum = np.mean(self.edx_split[i][j].data[:, :, int(edx_from/edx_scale):int(edx_to/edx_scale)], axis=(0, 1))
+                ax.flat[j*2+1].plot(self.edx_range[int(edx_from/edx_scale):int(edx_to/edx_scale)], edx_sum, 'k-')
+            fig.suptitle(self.subfolders[i]+' EDX intensity map and mean EDX spectrum')
+            fig.tight_layout()
+            plt.show()        
+
+    
+    def NMF_decompose(self, num_comp, max_normalize=False, rescale_0to1=True, profile_type="variance", verbose=True):
         
         self.num_comp = num_comp
         
         # NMF - load data
         flat_adr = []
-        for adrs in self.loaded_data_path:
-            flat_adr.extend(adrs)
+        if profile_type == "variance":
+            for adrs in self.loaded_data_path:
+                flat_adr.extend(adrs)
+        elif profile_type == "mean":
+            for adrs in self.loaded_data_mean_path:
+                flat_adr.extend(adrs)
+        else:
+            print("Warning! wrong profile type!")
+            return
         
         self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_, self.to_, self.pixel_size_inv_Ang], 
                                 dat_scale=1, rescale=False, DM_file=True, verbose=verbose)
@@ -384,10 +475,7 @@ class radial_profile_analysis():
                 else:
                     fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
                 for j in range(num_img):
-                    if self.radial_mean_flag:
-                        sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
-                    else:
-                        sum_map = np.sum(self.radial_var_split[i][j].data, axis=2)
+                    sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
                     ax.flat[j].imshow(sum_map, cmap='gray')
                     for lv in range(num_comp):
                         ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
@@ -429,9 +517,13 @@ class radial_profile_analysis():
                 fig.tight_layout()
                 plt.show()
 
-    def NMF_comparison(self, str_name=None, ref_variance=0.7):
+    def NMF_comparison(self, str_name=None, percentile_threshold=90, ref_variance=0.7):
         # Show the pixels with high coefficients for each loading vector and the averaged profiles for the mask region
+        coeff_split = []
+        thresh_coeff_split = []
         for lv in range(self.num_comp):
+            coeff_lv = []
+            thresh_coeff_lv = []
             fig, ax = plt.subplots(1, 1, figsize=(6, 4))
             ax.plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
             ax_twin = ax.twinx()
@@ -444,11 +536,13 @@ class radial_profile_analysis():
             fig.tight_layout()
             plt.show()
         
-            thresh = np.percentile(self.run_SI.DR_coeffs[:, lv], 95)
+            thresh = np.percentile(self.run_SI.DR_coeffs[:, lv], percentile_threshold)
             print("threshold coefficient value for loading vector %d = %f"%(lv+1, thresh))
             
             k=0
             for i in range(len(self.subfolders)):
+                coeff = []
+                thresh_coeff = []
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
@@ -458,8 +552,10 @@ class radial_profile_analysis():
                     
                 for j in range(num_img):
                     coeff_map = self.run_SI.coeffs_reshape[k][:, :, lv].copy()
+                    coeff.append(coeff_map)
                     coeff_map[coeff_map<=thresh] = 0
                     coeff_map[coeff_map>thresh] = 1
+                    thresh_coeff.append(coeff_map)
                     
                     ax.flat[j*2].imshow(coeff_map, cmap='gray')
                     ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
@@ -479,10 +575,18 @@ class radial_profile_analysis():
                     k+=1
                 fig.suptitle(self.subfolders[i]+' thresholding coefficient map for loading vector %d'%(lv+1))
                 fig.tight_layout()
+                coeff_lv.append(coeff)
+                thresh_coeff_lv.append(thresh_coeff)
                 plt.show()
+                
+            coeff_split.append(coeff_lv)
+            thresh_coeff_split.append(thresh_coeff_lv)
+            
+        self.coeff_split = coeff_split
+        self.thresh_coeff_split = thresh_coeff_split
 
 
-    def scattering_range_of_interest(self, fill_width=0.1, height=None, width=None, threshold=None, distance=None, prominence=None):
+    def scattering_range_of_interest(self, profile_type="variance", str_name=None, fill_width=0.1, height=None, width=None, threshold=None, distance=None, prominence=0.001):
 
         if width != None:
             width = width/self.pixel_size_inv_Ang
@@ -492,12 +596,20 @@ class radial_profile_analysis():
         
         # sum of radial variance profile by subfolder
         total_sum_split = []
-        for split in self.radial_var_sum_split:
-            total_sum_split.append(np.mean(split, axis=0))
-        
+        if profile_type == "variance":
+            for split in self.radial_var_sum_split:
+                total_sum_split.append(np.mean(split, axis=0))
+        elif profile_type == "mean":
+            for split in self.radial_avg_sum_split:
+                total_sum_split.append(np.mean(split, axis=0))  
+        else:
+            print("Warning! wrong profile type!")
+            return
+            
         for i, sp in enumerate(total_sum_split):
             fig, ax = plt.subplots(1, 1, figsize=(8, 6))
             tmp_sp = sp[int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)]
+            tmp_sp /= np.max(tmp_sp)
 
             peaks = find_peaks(tmp_sp, height=height, 
                                width=width, 
@@ -510,12 +622,18 @@ class radial_profile_analysis():
             
             ax.plot(self.x_axis, tmp_sp, c=self.color_rep[i+1], label=self.subfolders[i])
 
+            if str_name != None:
+                ax_twin = ax.twinx()
+                for key in str_name:
+                    ax_twin.plot(self.x_axis, self.int_sf[key], label=key, linestyle=":")
+                ax_twin.legend(loc="right")
+
             for j, peak in enumerate(peaks):
                 if peak >= self.from_ and peak <= self.to_:
                     print("%d peak position (1/Å):\t"%(j+1), peak)
                     ax.axvline(peak, ls=':', lw=1.5, c=self.color_rep[i+1])
                     ax.fill_between([peak-fill_width, peak+fill_width], y1=np.max(tmp_sp), y2=np.min(tmp_sp), alpha=0.5, color='orange')
-                    ax.text(peak, 0.0, "%d"%(j+1))
+                    ax.text(peak, 1.0, "%d"%(j+1))
 
             ax.set_xlabel('scattering vector (1/Å)')
             ax.set_facecolor("lightgray")
@@ -566,15 +684,17 @@ class radial_profile_analysis():
             total_num += num_img
         ax.grid()
         ax.legend()
-        fig.suptitle("mean and standard deviation of the variance map above")
+        fig.suptitle("mean and standard deviation of the maps in the above cell")
         fig.tight_layout()
         plt.show()    
 
     def high_variance_map(self, abs_threshold):
         # binary variance map (leave only large variances for the range specified above)
         # abosulte variance map threshold (pixel value > abs_threshold will be 1, otherwise it will be 0)
+        thresh_var_split = []
         self.abs_threshold = abs_threshold
         for i in range(len(self.subfolders)):
+            thresh_var = []
             num_img = len(self.radial_var_split[i])
             grid_size = int(np.around(np.sqrt(num_img)))
             if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
@@ -585,15 +705,194 @@ class radial_profile_analysis():
                 var_map = np.sum(self.radial_var_split[i][j].isig[self.sv_range[0]:self.sv_range[1]].data, axis=2)
                 var_map[var_map<=abs_threshold] = 0
                 var_map[var_map>abs_threshold] = 1
+                thresh_var.append(var_map)
                 ax.flat[j].imshow(var_map, cmap='gray')
                 ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
             for a in ax.flat:
                 a.axis('off')
             fig.suptitle(self.subfolders[i]+' - scattering vector range %.3f-%.3f (1/Å)'%(self.sv_range[0], self.sv_range[1]))
             fig.tight_layout()
+            thresh_var_split.append(thresh_var)
+            plt.show()
+            
+        self.thresh_var_split = thresh_var_split
+
+
+    def Xcorrel(self, str_name=None, profile_type="mean"):
+        xcor_val_split = []
+        xcor_sh_split = []
+
+        self.xcor_profile = profile_type
+        self.xcor_str = str_name
+        
+        for i in range(len(self.subfolders)):
+            num_img = len(self.radial_var_split[i])
+            xcor_val_list = []
+            xcor_sh_list = []
+            for j in range(num_img):
+                if profile_type=="variance":
+                    var_data = self.radial_var_split[i][j].data
+                elif profile_type=="mean":
+                    var_data = self.radial_avg_split[i][j].data
+                else:
+                    print("Warning! wrong profile type!")
+                    return
+                    
+                xcor_val = []
+                xcor_sh = []
+                for sy in range(var_data.shape[0]):
+                    for sx in range(var_data.shape[1]):
+                        sp = var_data[sy, sx][int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)]
+                        xcor = np.correlate(self.int_sf[str_name], sp, mode='full')
+                        xcor_val.append(np.max(xcor))
+                        xcor_sh.append(np.argmax(xcor))
+                xcor_val = np.asarray(xcor_val).reshape(var_data.shape[:2])
+                xcor_sh = np.asarray(xcor_sh).reshape(var_data.shape[:2])*self.pixel_size_inv_Ang - np.median(self.x_axis)
+                xcor_val_list.append(xcor_val)
+                xcor_sh_list.append(xcor_sh)
+            xcor_val_split.append(xcor_val_list)
+            xcor_sh_split.append(xcor_sh_list)
+
+        self.xcor_val_split = xcor_val_split
+        self.xcor_sh_split = xcor_sh_split
+
+        for i in range(len(self.subfolders)):
+            num_img = len(self.radial_var_split[i])
+            grid_size = int(np.around(np.sqrt(num_img)))
+            if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+            else:
+                fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+            for j in range(num_img):     
+                ax.flat[j*2].imshow(xcor_val_split[i][j], cmap='inferno')
+                ax.flat[j*2].set_title(self.loaded_data_path[i][j][-29:-14])
+                ax.flat[j*2].axis("off")
+        
+                ax.flat[j*2+1].hist(xcor_val_split[i][j].flatten(), bins=100)
+                ax.flat[j*2+1].set_title("cross-correlation values")
+                ax.flat[j*2+1].set_facecolor("lightgray")
+        
+            fig.suptitle(self.subfolders[i]+' cross-correlation - value')
+            fig.tight_layout()
             plt.show()
 
+    def high_Xcorr(self, value_threshold=5.0, shift_threshold=0.3):
+        thresh_xcor_split = []
+        
+        for i in range(len(self.subfolders)):
+            thresh_xcor = []
+            num_img = len(self.radial_var_split[i])
+            grid_size = int(np.around(np.sqrt(num_img)))
+            if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+            else:
+                fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+            for j in range(num_img):
+                xcor_val_map = self.xcor_val_split[i][j].copy()
+                xcor_sh_map = self.xcor_sh_split[i][j].copy()
+                val_map = self.xcor_val_split[i][j].copy()
+                sh_map = self.xcor_sh_split[i][j].copy()        
+                xcor_val_map[val_map<=value_threshold] = 0
+                xcor_val_map[val_map>value_threshold] = 1
+                xcor_sh_map[np.abs(sh_map)>shift_threshold] = 0
+                xcor_sh_map[np.abs(sh_map)<=shift_threshold] = 1
+        
+                bool_mask = xcor_val_map * xcor_sh_map
+                thresh_xcor.append(bool_mask)
+                ax.flat[j*2].imshow(bool_mask, cmap='gray')
+                ax.flat[j*2].set_title(self.loaded_data_path[i][j][-29:-14])
+                ax.flat[j*2].axis("off")
+                
+                if len(np.nonzero(bool_mask)[0]) != 0:
+                    if self.xcor_profile == "variance":
+                        avg_rv = np.mean(self.radial_var_split[i][j].data[np.where(bool_mask==1)], axis=0)
+                        avg_rv = vg_rv[int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)]
+                    elif self.xcor_profile == "mean":
+                        avg_rv = np.mean(self.radial_avg_split[i][j].data[np.where(bool_mask==1)], axis=0)
+                        avg_rv = avg_rv[int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)]
+                    else:
+                        print("Warning! wrong profile type!")
+                        return
+                    
+                    ax.flat[j*2+1].plot(self.x_axis, avg_rv/np.max(avg_rv), 'k-')
+                    ax_twin = ax.flat[j*2+1].twinx()
+                    ax_twin.plot(self.x_axis, self.int_sf[self.xcor_str], 'k:')
+                    ax.flat[j*2+1].set_facecolor("lightgray")
 
+            thresh_xcor_split.append(thresh_xcor)
+            fig.suptitle(self.subfolders[i]+' large cross-correlation - value')
+            fig.tight_layout()
+            plt.show()
+        self.thresh_xcor_split = thresh_xcor_split
+
+
+    def edx_classification(self, threshold_map="NMF"):
+        if threshold_map == "variance":
+            for i in range(len(self.subfolders)):
+                num_img = len(self.edx_split[i])
+                grid_size = int(np.around(np.sqrt(num_img)))
+                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+                else:
+                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                    
+                for j in range(num_img):
+                    thresh_map = self.thresh_var_split[i][j]
+                    ax.flat[j*2].imshow(thresh_map, cmap='gray')
+                    ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    ax.flat[j*2].axis("off")
+                    
+                    edx_sum = np.mean(self.edx_split[i][j].data, axis=(0, 1))
+                    ax.flat[j*2+1].plot(self.edx_range[int(self.edx_from/self.edx_scale):int(self.edx_to/self.edx_scale)], edx_sum[int(self.edx_from/self.edx_scale):int(self.edx_to/self.edx_scale)], 'k-')
+                fig.suptitle(self.subfolders[i]+' mean EDX spectrum for the high-variance map')
+                fig.tight_layout()
+                plt.show()    
+
+        elif threshold_map == "cross-correlation":
+            for i in range(len(self.subfolders)):
+                num_img = len(self.edx_split[i])
+                grid_size = int(np.around(np.sqrt(num_img)))
+                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+                else:
+                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                    
+                for j in range(num_img):
+                    thresh_map = self.thresh_xcor_split[i][j]
+                    ax.flat[j*2].imshow(thresh_map, cmap='gray')
+                    ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    ax.flat[j*2].axis("off")
+                    
+                    edx_sum = np.mean(self.edx_split[i][j].data, axis=(0, 1))
+                    ax.flat[j*2+1].plot(self.edx_range[int(self.edx_from/self.edx_scale):int(self.edx_to/self.edx_scale)], edx_sum[int(self.edx_from/self.edx_scale):int(self.edx_to/self.edx_scale)], 'k-')
+                fig.suptitle(self.subfolders[i]+' mean EDX spectrum for the high-cross-correlation map')
+                fig.tight_layout()
+                plt.show()
+        
+        elif threshold_map == "NMF":
+            for lv in range(self.num_comp):
+                for i in range(len(self.subfolders)):
+                    num_img = len(self.edx_split[i])
+                    grid_size = int(np.around(np.sqrt(num_img)))
+                    if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                        fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+                    else:
+                        fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                        
+                    for j in range(num_img):
+                        thresh_map = self.thresh_coeff_split[lv][i][j]
+                        ax.flat[j*2].imshow(thresh_map, cmap='gray')
+                        ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                        ax.flat[j*2].axis("off")
+                        
+                        edx_sum = np.mean(self.edx_split[i][j].data, axis=(0, 1))
+                        ax.flat[j*2+1].plot(self.edx_range[int(self.edx_from/self.edx_scale):int(self.edx_to/self.edx_scale)], edx_sum[int(self.edx_from/self.edx_scale):int(self.edx_to/self.edx_scale)], 'k-')
+                    fig.suptitle(self.subfolders[i]+' mean EDX spectrum for the high-coefficient map of loading vector %d'%(lv+1))
+                    fig.tight_layout()
+                    plt.show()    
+        else:
+            print("Warning! unavailable type!")
+    
     def summary_save(self, save=False, obtain_dp=False, log_scale_dp=False):
         
         for i in range(len(self.subfolders)):
@@ -610,28 +909,20 @@ class radial_profile_analysis():
                 ax[0, 0].set_title("Aligned BF disc")
                 ax[0, 0].axis("off")
 
-                if self.radial_mean_flag:
-                    sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
-                    ax[0, 1].imshow(sum_map, cmap='inferno')
-                    ax[0, 1].set_title("Intensity map")
-                    ax[0, 1].axis("off")
-
-                else:
-                    sum_map = np.sum(self.radial_var_split[i][j].data, axis=2)
-                    ax[0, 1].imshow(sum_map, cmap='inferno')
-                    ax[0, 1].set_title("Variance integration map")
-                    ax[0, 1].axis("off")                    
+                sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
+                ax[0, 1].imshow(sum_map, cmap='inferno')
+                ax[0, 1].set_title("Intensity map")
+                ax[0, 1].axis("off")                 
         
                 rv = self.radial_var_sum_split[i][j]
                 ax[0, 2].plot(self.x_axis, rv[int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)], 'k-', label="var_sum")
                 ax[0, 2].set_title("Sum of radial variance/mean profiles")
-                ax[0, 2].legend(lod='upper right')
+                ax[0, 2].legend(loc='upper right')
                 
-                if self.radial_mean_flag:
-                    ra = self.radial_avg_sum_split[i][j]
-                    ax_twin = ax[0, 2].twinx()
-                    ax_twin.plot(self.x_axis, ra[int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)], 'r:', label="mean_sum")
-                    ax_twin.legend(loc='right')
+                ra = self.radial_avg_sum_split[i][j]
+                ax_twin = ax[0, 2].twinx()
+                ax_twin.plot(self.x_axis, ra[int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)], 'r:', label="mean_sum")
+                ax_twin.legend(loc='right')
         
                 var_map = np.sum(self.radial_var_split[i][j].isig[self.sv_range[0]:self.sv_range[1]].data, axis=2)
                 ax[1, 0].imshow(var_map, cmap='inferno')
@@ -641,7 +932,7 @@ class radial_profile_analysis():
                 th_map[var_map<=self.abs_threshold] = 0
                 th_map[var_map>self.abs_threshold] = 1
                 ax[1, 1].imshow(th_map, cmap='gray')
-                ax[1, 1].set_title('Thresholding map\nabsolute threshold %.3f'%self.abs_threshold)
+                ax[1, 1].set_title('High-variance map\nabsolute threshold %.3f'%self.abs_threshold)
 
                 if obtain_dp and len(np.nonzero(th_map)[0]) != 0:
                     if self.new_process_flag:
@@ -658,10 +949,10 @@ class radial_profile_analysis():
                     if log_scale_dp:
                         mean_dp[mean_dp <= 0] = 1.0
                         ax[2, 1].imshow(np.log(mean_dp), cmap='inferno')
-                        ax[2, 1].set_title('(log-scale) Mean diffraction pattern\nfor the thresholding map')
+                        ax[2, 1].set_title('(log-scale) Mean diffraction pattern\nfor the high-variance map')
                     else:
                         ax[2, 1].imshow(mean_dp, cmap='inferno')
-                        ax[2, 1].set_title('Mean diffraction pattern\nfor the thresholding map')
+                        ax[2, 1].set_title('Mean diffraction pattern\nfor the high-variance map')
                         
                     if save:
                         mean_dp = hs.signals.Signal2D(mean_dp)
@@ -677,7 +968,7 @@ class radial_profile_analysis():
                         ax[1, 2].set_title('(log-scale) Maximum diffraction pattern\nfor the thresholding map')
                     else:
                         ax[1, 2].imshow(max_dp, cmap='inferno')
-                        ax[1, 2].set_title('Maximum diffraction pattern\nfor the thresholding map')
+                        ax[1, 2].set_title('Maximum diffraction pattern\nfor the high-variance map')
                         
                     if save:
                         max_dp = hs.signals.Signal2D(max_dp)
@@ -690,7 +981,7 @@ class radial_profile_analysis():
                 if len(np.nonzero(th_map)[0]) != 0:
                     avg_rv = np.mean(self.radial_var_split[i][j].data[np.where(th_map==1)], axis=0)
                     ax[2, 2].plot(self.x_axis, avg_rv[int(self.from_/self.pixel_size_inv_Ang):int(self.to_/self.pixel_size_inv_Ang)], 'k-')
-                    ax[2, 2].set_title('Averaged radial variance profile\nfor the thresholding map')
+                    ax[2, 2].set_title('Averaged radial variance profile\nfor the high-variance map')
                     if save:
                         avg_rv = hs.signals.Signal1D(avg_rv)
                         avg_rv.axes_manager[0].scale = self.pixel_size_inv_Ang
