@@ -24,23 +24,20 @@ from sklearn.cluster import OPTICS
 import ipywidgets as pyw
 import time
 
-def find_nearest(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return idx
 
 class radial_profile_analysis():
-
-    color_rep = ["black", "red", "green", "blue", "orange", "purple", "yellow", "lime", 
-             "cyan", "magenta", "lightgray", "peru", "springgreen", "deepskyblue", 
-             "hotpink", "darkgray"]
-
-    cm_rep = ['Reds', 'Greens', 'Blues', 'Oranges', 'Purples']
-    
     def __init__(self, base_dir, subfolders, profile_length, num_load, 
                  include_key=None, exclude_key=None, limit_scan_region=[1000, 1000], 
                  simult_edx=False, edx_key='', 
                  roll_axis=True, edx_crop=[0, 0], verbose=True):
+
+        # create a customized colorbar
+        self.color_rep = ["black", "red", "green", "blue", "orange", "purple", "yellow", "lime", 
+                    "cyan", "magenta", "lightgray", "peru", "springgreen", "deepskyblue", 
+                    "hotpink", "darkgray"]
+
+        self.cm_rep = ["gray", "Reds", "Greens", "Blues", "Oranges", "Purples"]  
+        
 
         edx_split = []
         edx_avg_split = []
@@ -256,14 +253,16 @@ class radial_profile_analysis():
             num_img = len(self.BF_disc_align[i])
             print(num_img)
             grid_size = int(np.around(np.sqrt(num_img)))
-            if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+            if num_img == 1:
+                fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+            elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                 fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
             else:
                 fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
             for j in range(num_img):
                 ax.flat[j].imshow(self.BF_disc_align[i][j][top:bottom, left:right])
                 ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                ax.flat[j].axis("off")
+                ax.flat[j].axis("off")                  
             fig.suptitle(self.subfolders[i]+' BF disc align result')
             fig.tight_layout()
             plt.show()
@@ -274,15 +273,17 @@ class radial_profile_analysis():
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_avg_split[i])
             grid_size = int(np.around(np.sqrt(num_img)))
-            if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+            if num_img == 1:
+                fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+            elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                 fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
             else:
                 fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
             for j in range(num_img):
-                sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
+                sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)#
                 ax.flat[j].imshow(sum_map, cmap='inferno')
                 ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                ax.flat[j].axis("off")
+                ax.flat[j].axis("off")              
             fig.suptitle(self.subfolders[i]+' sum of intensities map')
             fig.tight_layout()
             plt.show()
@@ -379,10 +380,12 @@ class radial_profile_analysis():
         
             total_sp = []
             
-            if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                fig, ax = plt.subplots(grid_size, grid_size, figsize=(16, 12))
+            if num_img == 1:
+                fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+            elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
             else:
-                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(16, 10))
+                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
             for j, sp in enumerate(self.radial_var_sum_split[i]):
                 
                 if profile_type == "variance":
@@ -394,9 +397,13 @@ class radial_profile_analysis():
                 else:
                     print("Warning! wrong profile type!")
                     return                    
-                
-                ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                ax.flat[j].legend(loc='upper right')
+
+                try:
+                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    ax.flat[j].legend(loc='upper right')
+                except:
+                    ax.set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    ax.legend(loc='upper right')                    
                 
                 
                 ax_twin = ax.flat[j].twinx()
@@ -479,7 +486,7 @@ class radial_profile_analysis():
                 plt.show()        
 
     
-    def NMF_decompose(self, num_comp, max_normalize=False, rescale_0to1=True, profile_type="variance", verbose=True):
+    def NMF_decompose(self, num_comp, rescale_SI=False, max_normalize=False, rescale_0to1=True, profile_type="variance", verbose=True, coeff_map_type="absolute"):
         
         self.num_comp = num_comp
         
@@ -496,16 +503,16 @@ class radial_profile_analysis():
             return
         
         self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_, self.to_, self.pixel_size_inv_Ang], 
-                                dat_scale=1, rescale=False, DM_file=True, verbose=verbose)
+                                dat_scale=1, rescale=rescale_SI, DM_file=True, verbose=verbose)
 
         # NMF - prepare the input dataset
         self.run_SI.make_input(min_val=0.0, max_normalize=max_normalize, rescale_0to1=rescale_0to1)
 
         # NMF - NMF decomposition and visualization
-        self.run_SI.ini_DR(method="nmf", num_comp=num_comp, result_visual=True, intensity_range="absolute")
+        self.run_SI.ini_DR(method="nmf", num_comp=num_comp, result_visual=verbose, intensity_range=coeff_map_type)
 
     
-    def NMF_result(self):
+    def NMF_result(self, lv_show=None, transparency_percentile=100):
         
         # Loading vectors
         fig, ax = plt.subplots(1, 1, figsize=(6, 4))
@@ -517,58 +524,99 @@ class radial_profile_analysis():
         plt.show()
 
         # All coefficient maps in one image plot
-        if self.num_comp <= len(self.cm_rep):
+
+        if lv_show == None:
+            if self.num_comp <= len(self.cm_rep)-1:
+                num_comp = self.num_comp
+                k = 0
+                for i in range(len(self.subfolders)):
+                    num_img = len(self.radial_var_split[i])
+                    grid_size = int(np.around(np.sqrt(num_img)))
+                    if num_img == 1:
+                        fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                    elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                    else:
+                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                    for j in range(num_img):
+                        sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
+                        ax.flat[j].imshow(sum_map, cmap='gray')
+                        for lv in range(num_comp):
+                            transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
+                            transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
+                            ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
+                                              cmap=self.cm_rep[lv+1], 
+                                              alpha=transparency)
+                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                        k += 1
+                    for a in ax.flat:
+                        a.axis('off')
+                    fig.suptitle(self.subfolders[i])
+                    fig.tight_layout()
+                    plt.show()
+    
+            else:
+                print('The number of loading vectors exceeds the number of the preset colormaps.')
+                print(self.cm_rep[1:])
+                print('So, it will show the coefficient maps for only loading vector 1-%d'%(len(self.cm_rep)-1))
+                num_comp = len(self.cm_rep)-1
+                k = 0
+                for i in range(len(self.subfolders)):
+                    num_img = len(self.radial_var_split[i])
+                    grid_size = int(np.around(np.sqrt(num_img)))
+                    if num_img == 1:
+                        fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                    elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                    else:
+                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                    for j in range(num_img):
+                        sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
+                        ax.flat[j].imshow(sum_map, cmap='gray')
+                        for lv in range(num_comp):
+                            transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
+                            transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
+                            ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
+                                              cmap=self.cm_rep[lv+1], 
+                                              alpha=transparency)
+                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                        k += 1
+                    for a in ax.flat:
+                        a.axis('off')
+                    fig.suptitle(self.subfolders[i])
+                    fig.tight_layout()
+                    plt.show()
+
+        elif lv_show != None:
             num_comp = self.num_comp
             k = 0
             for i in range(len(self.subfolders)):
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                if num_img == 1:
+                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
                     fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
                 for j in range(num_img):
                     sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
                     ax.flat[j].imshow(sum_map, cmap='gray')
-                    for lv in range(num_comp):
+                    for c, lvs in enumerate(lv_show):
+                        lv = lvs-1
+                        print("Color map of loading vector %d = %s"%(lvs, self.cm_rep[c+1]))
+                        transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
+                        transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
                         ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
-                                          cmap=self.cm_rep[lv], 
-                                          alpha=self.run_SI.coeffs_reshape[k][:, :, lv]/np.max(self.run_SI.coeffs_reshape[k][:, :, lv]))
+                                          cmap=self.cm_rep[c+1], 
+                                          alpha=transparency)
                     ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
                     k += 1
                 for a in ax.flat:
                     a.axis('off')
                 fig.suptitle(self.subfolders[i])
                 fig.tight_layout()
-                plt.show()
-
-        else:
-            print('The number of loading vectors exceeds the number of the preset colormaps.')
-            print(self.cm_rep)
-            print('So, it will show the coefficient maps for only 1-%d loading vectors'%(len(self.cm_rep)))
-            num_comp = len(self.cm_rep)
-            k = 0
-            for i in range(len(self.subfolders)):
-                num_img = len(self.radial_var_split[i])
-                grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
-                else:
-                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
-                for j in range(num_img):
-                    sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
-                    ax.flat[j].imshow(sum_map, cmap='gray')
-                    for lv in range(num_comp):
-                        ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
-                                          cmap=self.cm_rep[lv], 
-                                          alpha=self.run_SI.coeffs_reshape[k][:, :, lv]/np.max(self.run_SI.coeffs_reshape[k][:, :, lv]))
-                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                    k += 1
-                for a in ax.flat:
-                    a.axis('off')
-                fig.suptitle(self.subfolders[i])
-                fig.tight_layout()
-                plt.show()
+                plt.show()            
 
     
     def NMF_comparison(self, str_name=None, percentile_threshold=90, ref_variance=0.7):
@@ -624,13 +672,14 @@ class radial_profile_analysis():
                         sub_num += tmp_num
                         total_num += tmp_num
                         coeff_rv = np.sum(self.radial_var_split[i][j].data[np.where(coeff_map==1)], axis=0)
+                        coeff_mean = np.mean(self.radial_var_split[i][j].data[np.where(coeff_map==1)], axis=0)
                         lv_tot += coeff_rv
                         lv_sub += coeff_rv
 
-                        ax.flat[j*2+1].set_ylim(0.0, ref_variance*1.5)
-                        ax.flat[j*2+1].plot(self.x_axis, zero_one_rescale(coeff_rv[self.range_ind[0]:self.range_ind[1]]), 'k-')
+                        #ax.flat[j*2+1].set_ylim(0.0, ref_variance*1.5)
+                        ax.flat[j*2+1].plot(self.x_axis, coeff_mean[self.range_ind[0]:self.range_ind[1]], 'k-')
                         ax.flat[j*2+1].hlines(y=ref_variance, xmin=self.x_axis.min(), xmax=self.x_axis.max(), color="k", linestyle=":", alpha=0.5)
-                        ax.flat[j*2+1].plot(self.x_axis, self.radial_var_sum_split[i][j][self.range_ind[0]:self.range_ind[1]], 'k:', alpha=0.5)
+                        #ax.flat[j*2+1].plot(self.x_axis, self.radial_var_sum_split[i][j][self.range_ind[0]:self.range_ind[1]], 'k:', alpha=0.5)
                         for lva in range(self.num_comp):
                             mean_coeff = np.mean(self.run_SI.coeffs_reshape[k][:, :, lva][np.where(coeff_map==1)])
                             ax.flat[j*2+1].plot(self.x_axis, self.run_SI.DR_comp_vectors[lva]*mean_coeff, self.color_rep[lva+1], alpha=0.7)
@@ -747,7 +796,9 @@ class radial_profile_analysis():
                 for i in range(len(self.subfolders)):
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
-                    if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                    if num_img == 1:
+                        fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                    elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                         fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                     else:
                         fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
@@ -793,7 +844,9 @@ class radial_profile_analysis():
             for i in range(len(self.subfolders)):
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                if num_img == 1:
+                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
                     fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
@@ -852,10 +905,12 @@ class radial_profile_analysis():
                     sub_num = 0
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
-                    if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
-                    else:
-                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                if num_img == 1:
+                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                else:
+                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
                     for j in range(num_img):
                         var_map = np.sum(self.radial_var_split[i][j].isig[sv_range[0]:sv_range[1]].data, axis=2)
                         abs_threshold = np.percentile(var_map, percentile_threshold)
@@ -908,7 +963,9 @@ class radial_profile_analysis():
                 thresh_var = []
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                if num_img == 1:
+                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
                     fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
@@ -958,7 +1015,9 @@ class radial_profile_analysis():
                 thresh_var = []
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                if num_img == 1:
+                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
                     fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
@@ -1437,24 +1496,25 @@ class radial_profile_analysis():
 # to perform NMF, and to visualize the decomposition result
 # If you have any questions about it, please contact me by email (jinseok.ryu@diamond.ac.uk or jinseuk56@gmail.com)
 
-# create a customized colorbar
-color_rep = ["black", "red", "green", "blue", "orange", "purple", "yellow", "lime", 
-             "cyan", "magenta", "lightgray", "peru", "springgreen", "deepskyblue", 
-             "hotpink", "darkgray"]
-
-rgb_rep = {"black":[1,1,1,1], "red":[1,0,0,1], "green":[0,1,0,1], "blue":[0,0,1,1], "orange":[1,0.5,0,1], 
-           "purple":[1,0,1,1],"yellow":[1,1,0,1], "lime":[0,1,0.5,1], "cyan":[0,1,1,1]}
-
-custom_cmap = mcolors.ListedColormap(color_rep)
-bounds = np.arange(-1, len(color_rep))
-norm = mcolors.BoundaryNorm(boundaries=bounds, ncolors=len(color_rep))
-sm = cm.ScalarMappable(cmap=custom_cmap, norm=norm)
-sm.set_array([])
-
-cm_rep = ["gray", "Reds", "Greens", "Blues", "Oranges", "Purples"]  
-    
 class drca():
     def __init__(self, adr, dat_dim, dat_unit, cr_range=None, dat_scale=1, rescale=True, DM_file=True, verbose=True):
+        # create a customized colorbar
+        self.color_rep = ["black", "red", "green", "blue", "orange", "purple", "yellow", "lime", 
+                    "cyan", "magenta", "lightgray", "peru", "springgreen", "deepskyblue", 
+                    "hotpink", "darkgray"]
+
+        self.rgb_rep = {"black":[1,1,1,1], "red":[1,0,0,1], "green":[0,1,0,1], "blue":[0,0,1,1], "orange":[1,0.5,0,1], "purple":[1,0,1,1],
+                "yellow":[1,1,0,1], "lime":[0,1,0.5,1], "cyan":[0,1,1,1]}
+
+        self.custom_cmap = mcolors.ListedColormap(self.color_rep)
+        bounds = np.arange(-1, len(self.color_rep))
+        self.norm = mcolors.BoundaryNorm(boundaries=bounds, ncolors=len(self.color_rep))
+        sm = cm.ScalarMappable(cmap=self.custom_cmap, norm=self.norm)
+        sm.set_array([])
+
+        self.cm_rep = ["gray", "Reds", "Greens", "Blues", "Oranges", "Purples"]  
+
+        # load data
         self.file_adr = adr
         self.num_img = len(adr)
         self.dat_dim = dat_dim
@@ -1649,6 +1709,7 @@ class drca():
                 dataset_flat = dataset_flat / np.max(dataset_flat, axis=1)[:, np.newaxis]
             else:
                 dataset_flat = dataset_flat / np.max(dataset_flat, axis=(1,2))[:, np.newaxis, np.newaxis]
+            dataset_flat = np.nan_to_num(dataset_flat)
             print(np.min(dataset_flat), np.max(dataset_flat))
             
         if rescale_0to1:
@@ -1664,10 +1725,10 @@ class drca():
         self.dataset_input = dataset_flat[self.ri]
         self.dataset_input = self.dataset_input.astype(np.float32)
         
-    def ini_DR(self, method="nmf", num_comp=5, result_visual=True, intensity_range = "absolute"):
+    def ini_DR(self, method="nmf", num_comp=5, result_visual=True, intensity_range="absolute"):
         self.DR_num_comp = num_comp
         if method=="nmf":
-            self.DR = NMF(n_components=num_comp, init="nndsvda", solver="mu", max_iter=2000, verbose=True)
+            self.DR = NMF(n_components=num_comp, init="nndsvda", solver="mu", max_iter=2000, verbose=result_visual)
             
             self.DR_coeffs = self.DR.fit_transform(self.dataset_input)
             self.DR_comp_vectors = self.DR.components_
@@ -1696,7 +1757,7 @@ class drca():
             if self.dat_dim == 3:
                 fig, ax = plt.subplots(1, 1, figsize=(6, 4)) # all loading vectors
                 for i in range(self.DR_num_comp):
-                    ax.plot(self.dat_dim_range, self.DR_comp_vectors[i], "-", c=color_rep[i+1], label="loading vector %d"%(i+1))
+                    ax.plot(self.dat_dim_range, self.DR_comp_vectors[i], "-", c=self.color_rep[i+1], label="loading vector %d"%(i+1))
                 ax.legend(fontsize="large")
                 ax.set_xlabel(self.dat_unit, fontsize=10)
                 ax.tick_params(axis="x", labelsize=10)
@@ -1865,7 +1926,7 @@ class drca():
             ax[0].scatter(b_point[1], b_point[0], s=10, c="blue", marker="*")
             ax[0].scatter(X_shift[:, 1], X_shift[:, 0], s=3, c=point_colors)
             ax[0].scatter(center[1], center[0], s=5, c="red", marker="D")
-            ax[1].scatter(X_shift[:, 1], X_shift[:, 0], s=3, c=sectors, cmap=custom_cmap, norm=norm)
+            ax[1].scatter(X_shift[:, 1], X_shift[:, 0], s=3, c=sectors, cmap=self.custom_cmap, norm=self.norm)
             fig.tight_layout()
             plt.show()
 
@@ -1907,13 +1968,13 @@ class drca():
 
                 if -1 in sector_label:
                     for i in range(1, num_sector):
-                        ax[0].plot(self.dat_dim_range, (self.sector_avg[i]), label="sector %d"%(i), c=color_rep[i])
-                        ax[1].plot(self.dat_dim_range, (self.sector_avg[i]+(i-1)*0.25), label="sector %d"%(i), c=color_rep[i])
+                        ax[0].plot(self.dat_dim_range, (self.sector_avg[i]), label="sector %d"%(i), c=self.color_rep[i])
+                        ax[1].plot(self.dat_dim_range, (self.sector_avg[i]+(i-1)*0.25), label="sector %d"%(i), c=self.color_rep[i])
 
                 else:
                     for i in range(0, num_sector):
-                        ax[0].plot(self.dat_dim_range, (self.sector_avg[i]), label="sector %d"%(i+1), c=color_rep[i+1])
-                        ax[1].plot(self.dat_dim_range, (self.sector_avg[i]+i*0.25), label="sector %d"%(i+1), c=color_rep[i+1])
+                        ax[0].plot(self.dat_dim_range, (self.sector_avg[i]), label="sector %d"%(i+1), c=self.color_rep[i+1])
+                        ax[1].plot(self.dat_dim_range, (self.sector_avg[i]+i*0.25), label="sector %d"%(i+1), c=self.color_rep[i+1])
 
                 ax[0].legend(fontsize="x-large")
                 ax[0].set_xlabel(self.dat_unit)
@@ -2059,7 +2120,7 @@ class drca():
             labels = clust.labels_[clust.ordering_]
             print("activated?")
         
-            for klass, color in zip(range(0, len(color_rep)), color_rep[1:]):
+            for klass, color in zip(range(0, len(self.color_rep)), self.color_rep[1:]):
                 Xk = space[labels == klass]
                 Rk = reachability[labels == klass]
                 self.ax1.plot(Xk, Rk, color, alpha=0.3)
@@ -2073,14 +2134,14 @@ class drca():
             labels = clust.labels_
             self.labels = labels
             if self.num_comp_vis == 3:
-                for klass, color in zip(range(0, len(color_rep)), color_rep[1:]):
+                for klass, color in zip(range(0, len(self.color_rep)), self.color_rep[1:]):
                     Xo = self.X[labels == klass]
                     self.ax2.scatter(Xo[:, 0], Xo[:, 1], Xo[:, 2], color=color, alpha=0.3, marker='.')
                 self.ax2.plot(self.X[labels == -1, 0], self.X[labels == -1, 1], self.X[labels == -1, 2], 'k+', alpha=0.1)
                 self.ax2.set_title('Automatic Clustering\nOPTICS(# of clusters=%d)\n(%f, %f, %f)'%(len(np.unique(labels)), msample, steep, msize))
 
             elif self.num_comp_vis == 2:
-                for klass, color in zip(range(0, len(color_rep)), color_rep[1:]):
+                for klass, color in zip(range(0, len(self.color_rep)), self.color_rep[1:]):
                     Xo = self.X[labels == klass]
                     self.ax2.scatter(Xo[:, 0], Xo[:, 1], color=color, alpha=0.3, marker='.')
                 self.ax2.plot(self.X[labels == -1, 0], self.X[labels == -1, 1], 'k+', alpha=0.1)
@@ -2090,7 +2151,7 @@ class drca():
         
         label_reshape, _, _ = label_arrangement(self.labels, self.data_shape)
 
-        self.ax3.imshow(label_reshape[img_sel-1], cmap=custom_cmap, norm=norm)
+        self.ax3.imshow(label_reshape[img_sel-1], cmap=self.custom_cmap, norm=self.norm)
         self.ax3.set_title("image %d"%(img_sel), fontsize=10)
         self.ax3.axis("off")
 
@@ -2117,7 +2178,7 @@ class drca():
         print(hist) # number of data points in each cluster
         
         fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-        for klass, color in zip(range(0, len(color_rep)), color_rep[1:]):
+        for klass, color in zip(range(0, len(self.color_rep)), self.color_rep[1:]):
             Xo = self.X[self.label_selected == klass]
             ax.scatter(Xo[:, 0], Xo[:, 1], color=color, alpha=0.3, marker='.')
         ax.plot(self.X[self.label_selected == -1, 0], self.X[self.label_selected == -1, 1], 'k+', alpha=0.1)
@@ -2129,7 +2190,7 @@ class drca():
         
         for i in range(self.num_img):
             fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-            ax.imshow(self.label_reshape[i], cmap=custom_cmap, norm=norm)
+            ax.imshow(self.label_reshape[i], cmap=self.custom_cmap, norm=self.norm)
             ax.set_title("image %d"%(i+1), fontsize=10)
             ax.axis("off")
             fig.tight_layout()
@@ -2169,13 +2230,13 @@ class drca():
 
             if -1 in self.label_sort:
                 for i in range(1, self.num_label):
-                    ax[0].plot(self.dat_dim_range, (self.lines[i]), label="cluster %d"%(i), c=color_rep[i])
-                    ax[1].plot(self.dat_dim_range, (self.lines[i]+(i-1)*0.25), label="cluster %d"%(i), c=color_rep[i])
+                    ax[0].plot(self.dat_dim_range, (self.lines[i]), label="cluster %d"%(i), c=self.color_rep[i])
+                    ax[1].plot(self.dat_dim_range, (self.lines[i]+(i-1)*0.25), label="cluster %d"%(i), c=self.color_rep[i])
 
             else:
                 for i in range(0, self.num_label):
-                    ax[0].plot(self.dat_dim_range, (self.lines[i]), label="cluster %d"%(i+1), c=color_rep[i+1])
-                    ax[1].plot(self.dat_dim_range, (self.lines[i]+i*0.25), label="cluster %d"%(i+1), c=color_rep[i+1])
+                    ax[0].plot(self.dat_dim_range, (self.lines[i]), label="cluster %d"%(i+1), c=self.color_rep[i+1])
+                    ax[1].plot(self.dat_dim_range, (self.lines[i]+i*0.25), label="cluster %d"%(i+1), c=self.color_rep[i+1])
 
             ax[0].legend(fontsize="x-large")
             ax[0].set_xlabel(self.dat_unit)
