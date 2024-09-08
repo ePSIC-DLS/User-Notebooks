@@ -314,7 +314,7 @@ class radial_profile_analysis():
             peak_sf = {}
             for adr in self.str_path:
                 str_name = adr.split('/')[-1].split('.')[0]
-                crystal = py4DSTEM.process.diffraction.Crystal.from_CIF(adr, conventional_standard_structure=True)
+                crystal = py4DSTEM.process.diffraction.Crystal.from_prismatic(adr)
                 crystal.calculate_structure_factors(self.to_)
             
                 int_sf[str_name] = py4DSTEM.process.diffraction.utils.calc_1D_profile(
