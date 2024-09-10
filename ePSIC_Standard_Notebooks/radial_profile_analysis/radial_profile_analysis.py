@@ -302,7 +302,7 @@ class radial_profile_analysis():
         self.to_ind = int(np.around(to_unit/self.pixel_size_inv_Ang))
         self.from_ = self.pixel_size_inv_Ang*self.from_ind
         self.to_ = self.pixel_size_inv_Ang*self.to_ind
-        self.x_axis = np.linspace(self.from_, self.to_, self.to_ind-self.from_ind)
+        self.x_axis = np.linspace(self.from_, self.to_-self.pixel_size_inv_Ang, self.to_ind-self.from_ind)
         print("Selected scattering vector range = [%.6f, %.6f]"%(self.x_axis.min(), self.x_axis.max()))
         print('Reciprocal pixel size : %.6f (original), %.6f (present)'%(self.pixel_size_inv_Ang, self.x_axis[1]-self.x_axis[0]))
 
