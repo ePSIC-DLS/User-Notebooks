@@ -78,7 +78,7 @@ class radial_profile_analysis():
             if include_key == []:
                 key_list = []
                 keyword_ = list(exclude_key)
-                keyword_.extend(["mean", "max", "bin"])
+                keyword_.extend(["mean", "max", "bin", "map"])
                 for adr in file_adrs:
                     check = []
                     for key in keyword_:
@@ -86,7 +86,7 @@ class radial_profile_analysis():
                             check.append(1)
                     if check == []:
                         key_list.append(adr)
-                #print(*key_list, sep="\n")
+                # print(*key_list, sep="\n")
                 print("number of data in subfolder '%s'"%sub)
                 print(len(key_list))
                 key_list = np.asarray(key_list)
@@ -107,13 +107,20 @@ class radial_profile_analysis():
         
             else:
                 file_adr_ = []
+                keyword_ = ["mean", "max", "bin", "map"]
                 for adr in file_adrs:
                     for key in include_key:
-                        if key in adr and "mean" not in adr:
-                            file_adr_.append(adr)
+                        if key in adr:
+                            check = []
+                            for key in keyword_:
+                                if key in adr:
+                                    check.append(1)
+                            if check == []:
+                                file_adr_.append(adr)                          
                 if simult_edx:
                     edx_adr_ = edx_adrs
                 print("number of data in subfolder '%s'"%sub)
+                #print(*file_adr_, sep='\n')
                 print(len(file_adr_))
 
             edx_tmp_list = []
@@ -302,7 +309,7 @@ class radial_profile_analysis():
         self.to_ind = int(np.around(to_unit/self.pixel_size_inv_Ang))
         self.from_ = self.pixel_size_inv_Ang*self.from_ind
         self.to_ = self.pixel_size_inv_Ang*self.to_ind
-        self.x_axis = np.linspace(self.from_, self.to_, self.to_ind-self.from_ind)
+        self.x_axis = np.linspace(self.from_, self.to_-self.pixel_size_inv_Ang, self.to_ind-self.from_ind)
         print("Selected scattering vector range = [%.6f, %.6f]"%(self.x_axis.min(), self.x_axis.max()))
         print('Reciprocal pixel size : %.6f (original), %.6f (present)'%(self.pixel_size_inv_Ang, self.x_axis[1]-self.x_axis[0]))
 
@@ -314,7 +321,8 @@ class radial_profile_analysis():
             peak_sf = {}
             for adr in self.str_path:
                 str_name = adr.split('/')[-1].split('.')[0]
-                crystal = py4DSTEM.process.diffraction.Crystal.from_prismatic(adr)
+                
+                crystal = py4DSTEM.process.diffraction.Crystal.from_CIF(adr)
                 crystal.calculate_structure_factors(self.to_)
             
                 int_sf[str_name] = py4DSTEM.process.diffraction.utils.calc_1D_profile(
@@ -344,7 +352,7 @@ class radial_profile_analysis():
     
                     for j, peak in enumerate(peaks):
                         if peak >= self.from_ and peak <= self.to_:
-                            print("%d peak position (1/Å):\t"%(j+1), peak)
+                            print(peak)
                             ax.axvline(peak, ls=':', lw=1.5, c='r')
                             ax.fill_between([peak-fill_width, peak+fill_width], y1=np.max(int_sf[str_name]), y2=np.min(int_sf[str_name]), alpha=0.5, color='orange')
                             ax.text(peak, 1.0, "%d"%(j+1))
@@ -743,7 +751,7 @@ class radial_profile_analysis():
 
         return lv_line
 
-    def NMF_summary_save(self, save=False, also_dp=False, log_scale_dp=True):
+    def NMF_summary_save(self, save=False, also_dp=False, log_scale_dp=True, also_tiff=False, fill_width=0.01, prominence_lv=0.001, prominence_profile=0.001):
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_var_split[i])
             max_dps = []
@@ -802,6 +810,10 @@ class radial_profile_analysis():
                     ra = hs.signals.Signal1D(ra)
                     ra.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                     ra.save(save_path+'/'+data_name+"_mean_radial_mean_profile.hspy", overwrite=True)
+                    if also_tiff:
+                        tifffile.imwrite(save_path+'/'+data_name+"_intensity_map.tif", sum_map.data)
+                        tifffile.imwrite(save_path+'/'+data_name+"_mean_radial_variance_profile.tif", rv.data)
+                        tifffile.imwrite(save_path+'/'+data_name+"_mean_radial_mean_profile.tif", ra.data)
 
                 for lv in range(self.num_comp):
                     if also_dp:
@@ -810,9 +822,36 @@ class radial_profile_analysis():
                         fig_lv, ax_lv = plt.subplots(2, 2, figsize=(14, 14))
                     ax_lv[0, 0].plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
                     ax_lv[0, 0].set_title("Loading vector %d"%(lv+1))
+                    peaks = find_peaks(self.run_SI.DR_comp_vectors[lv], prominence=prominence_lv)[0]
+                    
+                    peaks = peaks * self.pixel_size_inv_Ang
+                    peaks = peaks + self.from_
+                    print("Peak positions of loading vector %d"%(lv+1))
+                    for ip, peak in enumerate(peaks):
+                        if peak >= self.from_ and peak <= self.to_:
+                            print(peak)
+                            ax_lv[0, 0].axvline(peak, ls=':', lw=1.5, c='r')
+                            ax_lv[0, 0].fill_between([peak-fill_width, peak+fill_width], y1=np.max(self.run_SI.DR_comp_vectors[lv]), y2=np.min(self.run_SI.DR_comp_vectors[lv]), alpha=0.5, color='orange')
+                            ax_lv[0, 0].text(peak, np.max(self.run_SI.DR_comp_vectors[lv]), "%.3f"%(peak))
+                    
                     ax_lv[0, 1].plot(self.x_axis, self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]], 'k-')
                     ax_lv[0, 1].set_title("Mean profile for the lv %d coeff threshold map"%(lv+1))
-                    ax_lv[1, 0].imshow(self.coeff_split[lv][i][j], cmap='inferno')
+                    peaks = find_peaks(self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]], prominence=prominence_profile)[0]
+                    
+                    peaks = peaks * self.pixel_size_inv_Ang
+                    peaks = peaks + self.from_
+                    print("Peak positions of the mean profile")
+                    for ip, peak in enumerate(peaks):
+                        if peak >= self.from_ and peak <= self.to_:
+                            print(peak)
+                            ax_lv[0, 1].axvline(peak, ls=':', lw=1.5, c='r')
+                            ax_lv[0, 1].fill_between([peak-fill_width, peak+fill_width], 
+                                                  y1=np.max(self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]]), 
+                                                  y2=np.min(self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]]), 
+                                                  alpha=0.5, color='orange')
+                            ax_lv[0, 1].text(peak, np.max(self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]]), "%.3f"%(peak))
+
+                    ax_lv[1, 0].imshow(self.coeff_split[lv][i][j], cmap='gray')
                     ax_lv[1, 0].set_title("lv %d coefficient map"%(lv+1))
                     ax_lv[1, 0].axis("off")
                     ax_lv[1, 1].imshow(self.thresh_coeff_split[lv][i][j], cmap='gray')
@@ -828,16 +867,19 @@ class radial_profile_analysis():
                         th_map.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[0].scale
                         th_map.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[1].scale
                         th_map.save(save_path+'/'+data_name+"_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_%d_lv_coeff_map.tif"%(lv+1), coeff_map.data)
+                            tifffile.imwrite(save_path+'/'+data_name+"_%d_lv_coeff_threshold_map.tif"%(lv+1), th_map.data)
                     
                     if also_dp and len(np.nonzero(self.thresh_coeff_split[lv][i][j])[0]) != 0:
                         mean_dp = np.mean(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
                         if log_scale_dp:
                             mean_dp[mean_dp <= 0] = 1.0
-                            ax_lv[2, 0].imshow(np.log(mean_dp), cmap='inferno')
+                            ax_lv[2, 0].imshow(np.log(mean_dp), cmap='gray')
                             ax_lv[2, 0].set_title('(log-scale) Mean diffraction pattern\nfor the high-variance map')
                             ax_lv[2, 0].axis("off")
                         else:
-                            ax_lv[2, 0].imshow(mean_dp, cmap='inferno')
+                            ax_lv[2, 0].imshow(mean_dp, cmap='gray')
                             ax_lv[2, 0].set_title('Mean diffraction pattern\nfor the high-variance map')
                             ax_lv[2, 0].axis("off")
                             
@@ -846,15 +888,17 @@ class radial_profile_analysis():
                             mean_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                             mean_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                             mean_dp.save(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                            if also_tiff:
+                                tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), mean_dp.data)
             
                         max_dp = np.max(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
                         if log_scale_dp:
                             max_dp[max_dp <= 0] = 1.0
-                            ax_lv[2, 1].imshow(np.log(max_dp), cmap='inferno')
+                            ax_lv[2, 1].imshow(np.log(max_dp), cmap='gray')
                             ax_lv[2, 1].set_title('(log-scale) Maximum diffraction pattern\nfor the thresholding map')
                             ax_lv[2, 1].axis("off")
                         else:
-                            ax_lv[2, 1].imshow(max_dp, cmap='inferno')
+                            ax_lv[2, 1].imshow(max_dp, cmap='gray')
                             ax_lv[2, 1].set_title('Maximum diffraction pattern\nfor the high-variance map')
                             ax_lv[2, 1].axis("off")
                             
@@ -863,7 +907,9 @@ class radial_profile_analysis():
                             max_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                             max_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                             max_dp.save(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
-                      
+                            if also_tiff:
+                                tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), max_dp.data)
+                    
                     fig_lv.tight_layout()
                     plt.show()
                     fig_lv.savefig(save_path+'/'+data_name+"_NMF_%d_lv_summary.png"%(lv+1))
@@ -1486,7 +1532,7 @@ class radial_profile_analysis():
             print("Warning! unavailable type!")
 
     
-    def summary_save(self, sv_range=None, percentile_threshold=None, save=False, also_dp=False, log_scale_dp=False):
+    def summary_save(self, sv_range=None, percentile_threshold=None, save=False, also_dp=False, log_scale_dp=False, also_tiff=False):
         
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_var_split[i])
@@ -1563,6 +1609,8 @@ class radial_profile_analysis():
                         mean_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                         mean_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                         mean_dp.save(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.tiff", mean_dp.data)
         
                     max_dp = np.max(dataset.data[np.where(th_map==1)], axis=0)
                     max_dps.append(max_dp)
@@ -1579,6 +1627,8 @@ class radial_profile_analysis():
                         max_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                         max_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
                         max_dp.save(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.tif", max_dp.data)
 
                     del dataset # release the occupied memory
                     
@@ -1629,6 +1679,12 @@ class radial_profile_analysis():
                     th_map.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[1].scale
                     th_map.save(save_path+'/'+data_name+"_threshold_map.hspy", overwrite=True)
                     fig.savefig(save_path+'/'+data_name+"_summary.png")
+                    if also_tiff:
+                        tifffile.imwrite(save_path+'/'+data_name+"_intensity_map.tif", sum_map.data)
+                        tifffile.imwrite(save_path+'/'+data_name+"_mean_radial_variance_profile.tif", rv.data)
+                        tifffile.imwrite(save_path+'/'+data_name+"_mean_radial_mean_profile.tif", ra.data)
+                        tifffile.imwrite(save_path+'/'+data_name+"_variance_map.tif", var_map.data)
+                        tifffile.imwrite(save_path+'/'+data_name+"_threshold_map.tif", th_map.data)
 
             max_dps = np.asarray(max_dps)
             mean_dps = np.asarray(mean_dps)
