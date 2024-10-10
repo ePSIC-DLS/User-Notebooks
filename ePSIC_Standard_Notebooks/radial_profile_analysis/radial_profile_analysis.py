@@ -50,11 +50,11 @@ class radial_profile_analysis():
         
         for i, sub in enumerate(subfolders):
             if simult_edx:
-                edx_adrs = glob.glob(base_dir+'/'+sub+'/*/EDX/*.rpl', recursive=True)
+                edx_adrs = glob.glob(base_dir+'/'+sub+'/*/*/EDX/*.rpl', recursive=True)
                 if edx_adrs == []:
-                    edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
+                    edx_adrs = glob.glob(base_dir+'/'+sub+'/*/EDX/*.rpl', recursive=True)
                     if edx_adrs == []:
-                        edx_adrs = glob.glob(base_dir+'/'+sub+'EDX/*.rpl', recursive=True)
+                        edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
                         if edx_adrs == []:
                             print("Please make sure that the base directory and subfolder name are correct.")
                             return                
@@ -69,6 +69,7 @@ class radial_profile_analysis():
                         return
             
             file_adrs.sort()
+            # print(*file_adrs, sep='\n')
             try:
                 edx_adrs.sort()
 
@@ -78,7 +79,7 @@ class radial_profile_analysis():
             if include_key == []:
                 key_list = []
                 keyword_ = list(exclude_key)
-                keyword_.extend(["mean", "max", "bin", "map"])
+                keyword_.extend(["mean", "max", "bin", "map", 'corrected'])
                 for adr in file_adrs:
                     check = []
                     for key in keyword_:
@@ -106,8 +107,9 @@ class radial_profile_analysis():
                         edx_adr_ = edx_adrs
         
             else:
-                file_adr_ = []
-                keyword_ = ["mean", "max", "bin", "map"]
+                key_list = []
+                keyword_ = list(exclude_key)
+                keyword_.extend(["mean", "max", "bin", "map", 'corrected'])
                 for adr in file_adrs:
                     for key in include_key:
                         if key in adr:
@@ -116,12 +118,26 @@ class radial_profile_analysis():
                                 if key in adr:
                                     check.append(1)
                             if check == []:
-                                file_adr_.append(adr)                          
+                                key_list.append(adr)                          
                 if simult_edx:
                     edx_adr_ = edx_adrs
-                print("number of data in subfolder '%s'"%sub)
-                #print(*file_adr_, sep='\n')
-                print(len(file_adr_))
+                    
+                if len(key_list) >= num_load:
+                    ri = np.random.choice(len(key_list), num_load, replace=False)
+                    file_adr_ = key_list[ri]
+                    if simult_edx:
+                        edx_adr_ = edx_adrs[ri]
+                else:
+                    file_adr_ = key_list
+                    if simult_edx:
+                        edx_adr_ = edx_adrs                    
+                    
+            print("number of data in subfolder '%s'"%sub)
+            #print(*file_adr_, sep='\n')
+            print(len(file_adr_))
+                
+            # for f_adr, e_adr in zip(file_adr_, edx_adr_):
+            #     print(f_adr.split('/')[-1], e_adr.split('/')[-1])
 
             edx_tmp_list = []
             edx_avg_list = []
@@ -715,6 +731,11 @@ class radial_profile_analysis():
                     lv_sub /= sub_num
                 ax_sub_tot.plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], 'k-')
                 ax_sub_tot.set_title("sum of profiles for all threshold maps - subfolder by subfolder")
+                ax_sub_twin = ax_sub_tot.twinx()
+                if str_name != None:
+                    for key in str_name:
+                        ax_sub_twin.plot(self.x_axis, self.int_sf[key], label=key, linestyle=":")
+                    ax_sub_twin.legend(loc="right")
                 fig_sub_tot.tight_layout()
 
                 ax_lv[2].plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[i], label=self.subfolders[i])
@@ -759,7 +780,7 @@ class radial_profile_analysis():
             for j in range(num_img):
                 if also_dp:
                     if self.new_process_flag:
-                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'calibrated_and_corrected.zspy')
+                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
                     else:      
                         cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
                         dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
@@ -1585,7 +1606,7 @@ class radial_profile_analysis():
 
                 if also_dp and len(np.nonzero(th_map)[0]) != 0:
                     if self.new_process_flag:
-                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'calibrated_and_corrected.zspy')
+                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
                     else:      
                         cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
                         dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
