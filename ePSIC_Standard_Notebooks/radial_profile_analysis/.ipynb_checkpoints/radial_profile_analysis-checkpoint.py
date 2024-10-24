@@ -26,7 +26,7 @@ import time
 
 
 class radial_profile_analysis():
-    def __init__(self, base_dir, subfolders, profile_length, num_load, 
+    def __init__(self, base_dir, subfolders, profile_length, num_load, final_dir=None,
                  include_key=None, exclude_key=None, limit_scan_region=[1000, 1000], 
                  simult_edx=False, edx_key='', 
                  roll_axis=True, edx_crop=[0, 0], verbose=True):
@@ -49,26 +49,46 @@ class radial_profile_analysis():
         new_process_flag = True
         
         for i, sub in enumerate(subfolders):
-            if simult_edx:
-                edx_adrs = glob.glob(base_dir+'/'+sub+'/*/EDX/*.rpl', recursive=True)
-                if edx_adrs == []:
-                    edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
+            if final_dir == None or final_dir or [] or final_dir == '':  
+                if simult_edx:
+                    edx_adrs = glob.glob(base_dir+'/'+sub+'/*/*/EDX/*.rpl', recursive=True)
                     if edx_adrs == []:
-                        edx_adrs = glob.glob(base_dir+'/'+sub+'EDX/*.rpl', recursive=True)
+                        edx_adrs = glob.glob(base_dir+'/'+sub+'/*/EDX/*.rpl', recursive=True)
                         if edx_adrs == []:
-                            print("Please make sure that the base directory and subfolder name are correct.")
-                            return                
+                            edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
+                            if edx_adrs == []:
+                                print("Please make sure that the base directory and subfolder name are correct.")
+                                return                
 
-            file_adrs = glob.glob(base_dir+'/'+sub+'/*/*/*.hspy', recursive=True)
-            if file_adrs == []:
-                file_adrs = glob.glob(base_dir+'/'+sub+'/*/*.hspy', recursive=True)
+                file_adrs = glob.glob(base_dir+'/'+sub+'/*/*/*.hspy', recursive=True)
                 if file_adrs == []:
-                    file_adrs = glob.glob(base_dir+'/'+sub+'/*.hspy', recursive=True)
+                    file_adrs = glob.glob(base_dir+'/'+sub+'/*/*.hspy', recursive=True)
+                    if file_adrs == []:
+                        file_adrs = glob.glob(base_dir+'/'+sub+'/*.hspy', recursive=True)
+                        if file_adrs == []:
+                            print("Please make sure that the base directory and subfolder name are correct.")
+                            return
+                        
+            else:  
+                if simult_edx:
+                    edx_adrs = glob.glob(base_dir+'/'+sub+'/*/*/EDX/*.rpl', recursive=True)
+                    if edx_adrs == []:
+                        edx_adrs = glob.glob(base_dir+'/'+sub+'/*/EDX/*.rpl', recursive=True)
+                        if edx_adrs == []:
+                            edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
+                            if edx_adrs == []:
+                                print("Please make sure that the base directory and subfolder name are correct.")
+                                return                
+
+                file_adrs = glob.glob(base_dir+'/'+sub+'/*/%s/*.hspy'%final_dir, recursive=True)
+                if file_adrs == []:
+                    file_adrs = glob.glob(base_dir+'/'+sub+'/%s/*.hspy'%final_dir, recursive=True)
                     if file_adrs == []:
                         print("Please make sure that the base directory and subfolder name are correct.")
                         return
             
             file_adrs.sort()
+            # print(*file_adrs, sep='\n')
             try:
                 edx_adrs.sort()
 
@@ -78,7 +98,7 @@ class radial_profile_analysis():
             if include_key == []:
                 key_list = []
                 keyword_ = list(exclude_key)
-                keyword_.extend(["mean", "max", "bin", "map"])
+                keyword_.extend(["mean", "max", "bin", "map", 'corrected'])
                 for adr in file_adrs:
                     check = []
                     for key in keyword_:
@@ -87,7 +107,6 @@ class radial_profile_analysis():
                     if check == []:
                         key_list.append(adr)
                 # print(*key_list, sep="\n")
-                print("number of data in subfolder '%s'"%sub)
                 print(len(key_list))
                 key_list = np.asarray(key_list)
 
@@ -106,8 +125,9 @@ class radial_profile_analysis():
                         edx_adr_ = edx_adrs
         
             else:
-                file_adr_ = []
-                keyword_ = ["mean", "max", "bin", "map"]
+                key_list = []
+                keyword_ = list(exclude_key)
+                keyword_.extend(["mean", "max", "bin", "map", 'corrected'])
                 for adr in file_adrs:
                     for key in include_key:
                         if key in adr:
@@ -116,12 +136,26 @@ class radial_profile_analysis():
                                 if key in adr:
                                     check.append(1)
                             if check == []:
-                                file_adr_.append(adr)                          
+                                key_list.append(adr)                          
                 if simult_edx:
                     edx_adr_ = edx_adrs
-                print("number of data in subfolder '%s'"%sub)
-                #print(*file_adr_, sep='\n')
-                print(len(file_adr_))
+                    
+                if len(key_list) >= num_load:
+                    ri = np.random.choice(len(key_list), num_load, replace=False)
+                    file_adr_ = key_list[ri]
+                    if simult_edx:
+                        edx_adr_ = edx_adrs[ri]
+                else:
+                    file_adr_ = key_list
+                    if simult_edx:
+                        edx_adr_ = edx_adrs                    
+                    
+            print("number of data in subfolder '%s'"%sub)
+            #print(*file_adr_, sep='\n')
+            print(len(file_adr_))
+                
+            # for f_adr, e_adr in zip(file_adr_, edx_adr_):
+            #     print(f_adr.split('/')[-1], e_adr.split('/')[-1])
 
             edx_tmp_list = []
             edx_avg_list = []
@@ -261,7 +295,8 @@ class radial_profile_analysis():
             print(num_img)
             grid_size = int(np.around(np.sqrt(num_img)))
             if num_img == 1:
-                fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                ax = np.array([ax])
             elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                 fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
             else:
@@ -281,13 +316,14 @@ class radial_profile_analysis():
             num_img = len(self.radial_avg_split[i])
             grid_size = int(np.around(np.sqrt(num_img)))
             if num_img == 1:
-                fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                ax = np.array([ax])
             elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                 fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
             else:
                 fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
             for j in range(num_img):
-                sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)#
+                sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
                 ax.flat[j].imshow(sum_map, cmap='inferno')
                 ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
                 ax.flat[j].axis("off")              
@@ -389,7 +425,8 @@ class radial_profile_analysis():
             total_sp = []
             
             if num_img == 1:
-                fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                ax = np.array([ax])
             elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                 fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
             else:
@@ -432,7 +469,7 @@ class radial_profile_analysis():
                 ax_sub[0].set_title("without normalization")
                 total_sp.append(tmp_sp)
 
-            if str_name != None:
+            if str_name != None and str_name != []:
                 for key in str_name:
                     ax_sub_twin.plot(self.x_axis, self.int_sf[key], label=key, linestyle=":")
                 ax_sub_twin.legend(loc="right")
@@ -476,7 +513,10 @@ class radial_profile_analysis():
             for i in range(len(self.subfolders)):
                 num_img = len(self.edx_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                if num_img == 1:
+                    fig, ax = plt.subplots(1, 1, figsize=(5*2, 5))
+                    ax = np.array([ax])
+                elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
                 else:
                     fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
@@ -533,7 +573,7 @@ class radial_profile_analysis():
 
         # All coefficient maps in one image plot
 
-        if lv_show == None:
+        if lv_show == None or lv_show == []:
             if self.num_comp <= len(self.cm_rep)-1:
                 num_comp = self.num_comp
                 k = 0
@@ -541,7 +581,8 @@ class radial_profile_analysis():
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
                     if num_img == 1:
-                        fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                        ax = np.array([ax])
                     elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                         fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                     else:
@@ -576,7 +617,8 @@ class radial_profile_analysis():
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
                     if num_img == 1:
-                        fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                        ax = np.array([ax])
                     elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                         fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                     else:
@@ -598,7 +640,7 @@ class radial_profile_analysis():
                     fig.tight_layout()
                     plt.show()
 
-        elif lv_show != None:
+        elif lv_show != None and lv_show != []:
             print("#############################################################################################")
             print("####################################     Caution!      ######################################")
             print("#############################################################################################")
@@ -608,7 +650,8 @@ class radial_profile_analysis():
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
@@ -649,7 +692,7 @@ class radial_profile_analysis():
             fig_lv, ax_lv = plt.subplots(1, 3, figsize=(12, 4))
             ax_lv[0].plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
             ax_twin = ax_lv[0].twinx()
-            if str_name != None:
+            if str_name != None and str_name != []:
                 for key in str_name:
                     ax_twin.plot(self.x_axis, self.int_sf[key], label=key, linestyle=":")
                 ax_twin.legend(loc="right")
@@ -669,6 +712,7 @@ class radial_profile_analysis():
                 lv_mean = []
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
+                
                 if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
                 else:
@@ -709,12 +753,20 @@ class radial_profile_analysis():
                             ax_lv_contri.plot(self.x_axis, self.run_SI.DR_comp_vectors[lva]*mean_coeff, self.color_rep[lva+1], alpha=0.7)
                         ax.flat[j*2+1].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
                         ax.flat[j*2+1].set_facecolor("lightgray")
+                    else:
+                        lv_mean.append(np.zeros(self.profile_length))
+                        
                     k+=1
                     
                 if sub_num != 0:
                     lv_sub /= sub_num
                 ax_sub_tot.plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], 'k-')
                 ax_sub_tot.set_title("sum of profiles for all threshold maps - subfolder by subfolder")
+                ax_sub_twin = ax_sub_tot.twinx()
+                if str_name != None and str_name != []:
+                    for key in str_name:
+                        ax_sub_twin.plot(self.x_axis, self.int_sf[key], label=key, linestyle=":")
+                    ax_sub_twin.legend(loc="right")
                 fig_sub_tot.tight_layout()
 
                 ax_lv[2].plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[i], label=self.subfolders[i])
@@ -759,7 +811,7 @@ class radial_profile_analysis():
             for j in range(num_img):
                 if also_dp:
                     if self.new_process_flag:
-                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'calibrated_and_corrected.zspy')
+                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
                     else:      
                         cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
                         dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
@@ -957,7 +1009,7 @@ class radial_profile_analysis():
             
             ax.plot(self.x_axis, tmp_sp, c=self.color_rep[i+1], label=self.subfolders[i])
 
-            if str_name != None:
+            if str_name != None and str_name != []:
                 ax_twin = ax.twinx()
                 for key in str_name:
                     ax_twin.plot(self.x_axis, self.int_sf[key], label=key, linestyle=":")
@@ -990,7 +1042,8 @@ class radial_profile_analysis():
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
                     if num_img == 1:
-                        fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                        ax = np.array([ax])
                     elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                         fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                     else:
@@ -1030,7 +1083,7 @@ class radial_profile_analysis():
                 fig.tight_layout()
                 plt.show()
             
-        elif sv_range != None:
+        elif sv_range != None and sv_range != []:
             self.sv_range = sv_range
             mean_var_map = []
             std_var_map = []
@@ -1038,7 +1091,8 @@ class radial_profile_analysis():
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
@@ -1099,7 +1153,8 @@ class radial_profile_analysis():
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
@@ -1157,7 +1212,8 @@ class radial_profile_analysis():
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
@@ -1209,7 +1265,8 @@ class radial_profile_analysis():
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 2, figsize=(12, 12))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
                 else:
@@ -1565,7 +1622,7 @@ class radial_profile_analysis():
                 ax_twin.plot(self.x_axis, ra[self.range_ind[0]:self.range_ind[1]], 'r:', label="mean_sum")
                 ax_twin.legend(loc='right')
 
-                if sv_range != None:
+                if sv_range != None and sv_range != []:
                     var_map = np.sum(self.radial_var_split[i][j].isig[sv_range[0]:sv_range[1]].data, axis=2)
                 else:
                     var_map = np.sum(self.radial_var_split[i][j].isig[self.sv_range[0]:self.sv_range[1]].data, axis=2)
@@ -1585,7 +1642,7 @@ class radial_profile_analysis():
 
                 if also_dp and len(np.nonzero(th_map)[0]) != 0:
                     if self.new_process_flag:
-                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'calibrated_and_corrected.zspy')
+                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
                     else:      
                         cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
                         dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
