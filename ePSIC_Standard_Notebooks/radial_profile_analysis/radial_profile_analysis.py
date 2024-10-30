@@ -515,10 +515,7 @@ class radial_profile_analysis():
             for i in range(len(self.subfolders)):
                 num_img = len(self.edx_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
-                if num_img == 1:
-                    fig, ax = plt.subplots(1, 1, figsize=(5*2, 5))
-                    ax = np.array([ax])
-                elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
                     fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
                 else:
                     fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
@@ -928,12 +925,12 @@ class radial_profile_analysis():
                     if also_dp and len(np.nonzero(self.thresh_coeff_split[lv][i][j])[0]) != 0:
                         mean_dp = np.sum(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
                         if save:
-                            mean_dp = hs.signals.Signal2D(mean_dp)
-                            mean_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                            mean_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                            mean_dp.save(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                            mean_dp_save = hs.signals.Signal2D(mean_dp)
+                            mean_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            mean_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            mean_dp_save.save(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
                             if also_tiff:
-                                tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), mean_dp.data)
+                                tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), mean_dp_save.data)
                                 
                         if log_scale_dp:
                             mean_dp[mean_dp <= 0] = 1.0
@@ -947,12 +944,12 @@ class radial_profile_analysis():
                             
                         max_dp = np.max(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
                         if save:
-                            max_dp = hs.signals.Signal2D(max_dp)
-                            max_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                            max_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                            max_dp.save(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                            max_dp_save = hs.signals.Signal2D(max_dp)
+                            max_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            max_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            max_dp_save.save(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
                             if also_tiff:
-                                tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), max_dp.data)
+                                tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), max_dp_save.data)
                                 
                         if log_scale_dp:
                             max_dp[max_dp <= 0] = 1.0
@@ -1655,6 +1652,13 @@ class radial_profile_analysis():
                         
                     mean_dp = np.mean(dataset.data[np.where(th_map==1)], axis=0)
                     mean_dps.append(np.sum(dataset.data[np.where(th_map==1)], axis=0))
+                    if save:
+                        mean_dp_save = hs.signals.Signal2D(mean_dp)
+                        mean_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                        mean_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                        mean_dp_save.save(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.tiff", mean_dp_save.data)
                     if log_scale_dp:
                         mean_dp[mean_dp <= 0] = 1.0
                         ax[2, 1].imshow(np.log(mean_dp), cmap='inferno')
@@ -1663,16 +1667,16 @@ class radial_profile_analysis():
                         ax[2, 1].imshow(mean_dp, cmap='inferno')
                         ax[2, 1].set_title('Mean diffraction pattern\nfor the high-variance map')
                         
-                    if save:
-                        mean_dp = hs.signals.Signal2D(mean_dp)
-                        mean_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                        mean_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                        mean_dp.save(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
-                        if also_tiff:
-                            tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.tiff", mean_dp.data)
-        
+                        
                     max_dp = np.max(dataset.data[np.where(th_map==1)], axis=0)
                     max_dps.append(max_dp)
+                    if save:
+                        max_dp_save = hs.signals.Signal2D(max_dp)
+                        max_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                        max_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                        max_dp_save.save(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.tif", max_dp_save.data)
                     if log_scale_dp:
                         max_dp[max_dp <= 0] = 1.0
                         ax[1, 2].imshow(np.log(max_dp), cmap='inferno')
@@ -1681,14 +1685,6 @@ class radial_profile_analysis():
                         ax[1, 2].imshow(max_dp, cmap='inferno')
                         ax[1, 2].set_title('Maximum diffraction pattern\nfor the high-variance map')
                         
-                    if save:
-                        max_dp = hs.signals.Signal2D(max_dp)
-                        max_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                        max_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                        max_dp.save(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
-                        if also_tiff:
-                            tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.tif", max_dp.data)
-
                     del dataset # release the occupied memory
                     
                 if len(np.nonzero(th_map)[0]) != 0:
