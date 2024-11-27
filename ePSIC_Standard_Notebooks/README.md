@@ -27,7 +27,7 @@
 - For this, the above processes should be completed (the calibration information will be automatically applied according to the acceleration voltage and camera length)
 - This will flatten each 2D diffraction image to a 1D radial average/variance profile
 - The exact path of 'automatic_azimuthal_transformation/apply_elliptical_correction_polardatacube.py' should be indicated in 'automatic_azimuthal_transformation/submit_polar_transform_multiple_jobs.ipynb'
-- '_azimuthal_mean.hspy' -> average profile 3D data, '_azimuthal_var.hspy' -> variance profile 3D data, '_corrected_scaled.hspy' -> ellpticity-corrected 4DSTEM data
+- '_azimuthal_mean.hspy' -> average profile 3D data, '_azimuthal_var.hspy' -> variance profile 3D data, '_corrected_scaled.hspy' -> ellpticity-corrected 4DSTEM data  
 ![transformation](img/radial_files.png)
 - This process may be helpful for structure characterisation of amorphous/polycrystalline/mixed-phase materials
 # Data analysis for radial profile datasets
