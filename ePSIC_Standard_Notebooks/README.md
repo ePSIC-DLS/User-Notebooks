@@ -3,6 +3,8 @@
 - The ipython notebooks or Python scripts should be modified if you want to perform them on your computer system
 - This workflow has been optimised for the Python kernel of 'epsic3.10'  
 ![Notice](img/jupyterhub_kernel.png)
+- [Instructions to connect to Diamond's JupyterHub](https://diamondlightsource.atlassian.net/wiki/spaces/EPSICWEB/pages/167346199/Instructions+to+connect+to+Diamond+s+JupyterHub)
+
 # MIB conversion
 - The format of raw 4DSTEM data is '.mib'
 - After acquiring the data, the mib files should be converted into the 'hdf5' files using 'MIB_conversion/MIB_convert.ipynb'
