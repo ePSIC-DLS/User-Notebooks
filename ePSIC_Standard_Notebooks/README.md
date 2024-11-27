@@ -1,7 +1,7 @@
 # Notice
 - This guide is only valid if you're using the jupyterhub server of Diamond Light Source
 - The ipython notebooks or Python scripts should be modified if you want to perform them on your computer system
-- It is optimised for the Python kernel of 'epsic3.10'  
+- This workflow has been optimised for the Python kernel of 'epsic3.10'  
 ![Notice](img/jupyterhub_kernel.png)
 # MIB conversion
 - The format of raw 4DSTEM data is '.mib'
