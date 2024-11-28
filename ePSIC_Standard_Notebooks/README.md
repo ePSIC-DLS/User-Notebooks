@@ -25,9 +25,9 @@
 - After this process has been finished, it is recommended checking the quality of the process by looking at the notebook file stored in each reference data directory  
 ![calibration](img/au_calibration_notebook.png)
 ![calibration](img/au_calibration_result.png)
-*Check the calibration quality (comparison between the flattened data and the simulated XRD of gold*
+*Check the calibration quality (comparison between the flattened data and the simulated XRD of gold)*
 ![calibration](img/ellipticity_correction.png)
-*Check the ellipticity calculation (left: corrected, right: original)*
+*Check the ellipticity calculation (left: ellipticity-corrected, right: original)*
 # Transforming the SEND data into the radial (azimuthal) average/variance profile data
 - For this, the above processes should be completed (the calibration information will be automatically applied according to the acceleration voltage and camera length)
 - This will flatten each 2D diffraction image to a 1D radial average/variance profile
