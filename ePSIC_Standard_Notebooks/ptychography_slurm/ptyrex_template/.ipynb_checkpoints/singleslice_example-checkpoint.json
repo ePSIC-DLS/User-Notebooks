@@ -1,0 +1,153 @@
+{
+    "base_dir": "/dls/science/groups/imaging/ePSIC_ptychography/experimental_data/300KeV_REBCO_multi-slice/20230914_114848/Ryu_example",
+    "experiment": {
+        "data": {
+            "data_key": "data/frames",
+            "data_path": "/dls/science/groups/imaging/ePSIC_ptychography/experimental_data/300KeV_REBCO_multi-slice/20230914_114848/20230914_114848.hdf",
+            "dead_pixel_flag": 1,
+            "dead_pixel_path": "/dls/science/groups/e02/Frederick/DetecotrMasks/Mask11082023a.h5",
+            "flat_field_flag": 0,
+            "flat_field_path": "None",
+            "load_flag": 1,
+            "meta_type": "hdf"
+        },
+        "detector": {
+            "position": [
+                0,
+                0,
+                0.09
+            ]
+        },
+        "experiment_ID": "300KeV_Grovenor",
+        "optics": {
+            "lens": {
+                "alpha": 0.0534,
+                "defocus": [
+                    7.500000000000001e-09,
+                    7.500000000000001e-09
+                ],
+                "use": 1
+            }
+        },
+        "sample": {
+            "position": [
+                0,
+                0,
+                0
+            ]
+        }
+    },
+    "process": {
+        "PIE": {
+            "decay": [
+                1,
+                1,
+                1
+            ],
+            "iterations": 50,
+            "object": {
+                "alpha": 0.8,
+                "end": -1,
+                "start": 2
+            },
+            "probe": {
+                "alpha": 0.4,
+                "end": -1,
+                "n": 1,
+                "start": 1
+            },
+            "scan": {
+                "area": [
+                    -1,
+                    -1
+                ],
+                "end": -1,
+                "shift radius": 0.2,
+                "shift trials": 3,
+                "start": -10,
+                "tilt radius": 40,
+                "tilt trials": 1
+            },
+            "source": {
+                "alpha": 0.5,
+                "end": -1,
+                "start": 2,
+                "sx": 4,
+                "sy": 1
+            }
+        },
+        "common": {
+            "detector": {
+                "bin": [
+                    1,
+                    1
+                ],
+                "crop": [
+                    512,
+                    512
+                ],
+                "mask_flag": 1,
+                "min_max": [
+                    0,
+                    62
+                ],
+                "name": "pty_data",
+                "optic_axis": [
+                    -1,
+                    -1
+                ],
+                "orientation": "00",
+                "pix_pitch": [
+                    5.5e-05,
+                    5.5e-05
+                ]
+            },
+            "object": {
+                "load_flag": 0,
+                "path": "None"
+            },
+            "probe": {
+                "convergence": 0.06348,
+                "load_flag": 0,
+                "path": "None"
+            },
+            "scan": {
+                "N": [
+                    127,
+                    127
+                ],
+                "dR": [
+                    3.90625e-11,
+                    3.90625e-11
+                ],
+                "fast_axis": 1,
+                "load_flag": 0,
+                "orientation": "11",
+                "path": "None",
+                "region": [
+                    0.2,
+                    0.8,
+                    0.2,
+                    0.8,
+                    1,
+                    1
+                ],
+                "rotation": 0,
+                "type": "tv"
+            },
+            "source": {
+                "energy": [
+                    300000.0
+                ],
+                "flux": -1,
+                "radiation": "electron"
+            }
+        },
+        "cores": 4,
+        "gpu_flag": 1,
+        "save_dir": "/dls/science/groups/e02/Ryu/epsic_code/epsic_ptychography/ptyrex_output/",
+        "save_interval": 5,
+        "save_prefix": "example",
+        "subset_type": "random"
+    }
+}
