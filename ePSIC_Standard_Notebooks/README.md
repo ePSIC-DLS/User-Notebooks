@@ -1,5 +1,6 @@
 # Notice
 - This guide is only valid if you're using the jupyterhub server of Diamond Light Source
+- __The notebooks will submit jobs to the DLS cluster node for data processing, so users should set the ssh key setting__
 - The ipython notebooks or Python scripts should be modified if you want to perform them on your computer system
 - This workflow has been optimised for the Python kernel of 'epsic3.10'  
 ![Notice](img/jupyterhub_kernel.png)
@@ -13,10 +14,18 @@
 - After acquiring the data, the mib files should be converted into the 'hdf5' files using 'MIB_conversion/MIB_convert.ipynb'
 - The codes for the MIB conversion can be found in [epsic_tools - MIB_convert_widget](https://github.com/ePSIC-DLS/epsic_tools/tree/master/epsic_tools/mib2hdfConvert/MIB_convert_widget/scripts)
 - hdf5 files can be read using 'H5PY' or 'HyperSpy' ([Example](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/automatic_Au_xgrating_calibration/au_xgrating_cal_submit.ipynb))
-- Details can be found inside the notebook  
+- Details can be found inside the notebook (Do not use GPU nodes for no reason)  
 ![MIB_convert](img/mib_conversion.png)
 - Currently, when the data is acquired simultaneously with EDX, the scan shape must be manually specified using 'known_shape' widget - the scan shape must be (Scan_X, Scan_Y) = (Scan_X, Scan_X-1)  
 ![MIB_convert](img/known_shape.png)
+- The necessary options to specify are normally:  
+    - 'Year'
+    - 'Session'
+    - 'Subfolder' or 'All MIB files in 'Merlin' folder'
+    - 'Use Fly-back' or 'Known_shape' and enter the scan shape
+    - 'Create slurm batch file'
+    - 'Create conversion info file'
+    - 'Submit a slurm job'
 # Obtaining the calibration information using the Au reference data
 - The reciprocal pixel size of scanning electron nanodiffraction (SEND) data (4DSTEM data acquired using a pencil beam) should be retrieved from the Au reference data
 - The ellipticity of diffraction rings should also be calculated
