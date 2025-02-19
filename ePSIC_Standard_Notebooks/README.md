@@ -33,7 +33,9 @@
 ![calibration](img/au_calibration.png)![calibration](img/au_calibration_json.png)
 - Please visit the following page for the details of this process: [py4DSTEM - Au calibration](https://github.com/ePSIC-DLS/Hyperspy_Workshop_2024/blob/main/py4DSTEM/orientation_01_AuAgPd_wire.ipynb)
 - The names of the session and the subfolder should be manually entered
-- After this process has been finished, it is recommended checking the quality of the process by looking at the notebook file stored in each reference data directory  
+- After this process has been finished, it is recommended checking the quality of the process by looking at the notebook ('submitted_notebook.nbconvert.ipynb') stored in each reference data directory
+- If the result of detecting a diffraction ring does not look accurate, try again after changing the value of 'q_range' or 'pixel_size_inv_Ang' in 'au_xgrating_cal_submit.ipynb'
+- Or you can manually run 'submitted_notebook.nbconvert.ipynb' for each calibration data to test a different 'q_range' or 'pixel_size_inv_Ang'  
 ![calibration](img/au_calibration_notebook.png)
 ![calibration](img/au_calibration_result.png)
 *Check the calibration quality (comparison between the flattened data and the simulated XRD of gold)*
