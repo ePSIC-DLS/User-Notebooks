@@ -1,22 +1,22 @@
 # Notice
-- This guide is only valid if you're using the jupyterhub server of Diamond Light Source
-- __The notebooks will submit jobs to the DLS cluster node for data processing, so users should set the ssh key setting__
+- This guide only applies if you're using the jupyterhub server of Diamond Light Source
+- __The notebooks will submit jobs to the DLS cluster node for data processing, so users must complete the ssh key setting__
 - The ipython notebooks or Python scripts should be modified if you want to perform them on your computer system
 - This workflow has been optimised for the Python kernel of 'epsic3.10'  
 ![Notice](img/jupyterhub_kernel.png)
 - [Instructions to connect to Diamond's JupyterHub](https://diamondlightsource.atlassian.net/wiki/spaces/EPSICWEB/pages/167346199/Instructions+to+connect+to+Diamond+s+JupyterHub)
-- This guide only deals with the data acquired using E02 (Grand ARM 300; JEOL, MerlinEM; Quantum Detectors, Aztec; Oxford Instruments)
+- This guide only deals with the data acquired using E02 (Grand ARM300CF; JEOL, MerlinEM; Quantum Detectors, Aztec; Oxford Instruments)
 - Please refer to the following article to see what you can do with 4DSTEM: [py4DSTEM: A Software Package for Four-Dimensional Scanning Transmission Electron Microscopy Data Analysis](https://dx.doi.org/10.1017/S1431927621000477)
 - [py4DSTEM](https://github.com/py4dstem/py4DSTEM) and [pyxem](https://github.com/pyxem/pyxem?tab=readme-ov-file) are very useful generally for 4DSTEM data processing and analysis
 
 # MIB conversion
 - The format of raw 4DSTEM data is '.mib'
-- After acquiring the data, the mib files should be converted into the 'hdf5' files using 'MIB_conversion/MIB_convert.ipynb'
+- After acquiring the data, the mib files must be converted into the 'hdf5' files using 'MIB_conversion/MIB_convert.ipynb'
 - The codes for the MIB conversion can be found in [epsic_tools - MIB_convert_widget](https://github.com/ePSIC-DLS/epsic_tools/tree/master/epsic_tools/mib2hdfConvert/MIB_convert_widget/scripts)
 - hdf5 files can be read using 'H5PY' or 'HyperSpy' ([Example](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/automatic_Au_xgrating_calibration/au_xgrating_cal_submit.ipynb))
 - Details can be found inside the notebook (Do not use GPU nodes for no reason)  
 ![MIB_convert](img/mib_conversion.png)
-- Currently, when the data is acquired simultaneously with EDX, the scan shape must be manually specified using 'known_shape' widget - the scan shape must be (Scan_X, Scan_Y) = (Scan_X, Scan_X-1)  
+- Currently, when the data is acquired simultaneously with EDX, the scan shape must be manually specified using 'known_shape' widget (make sure that 'Use Fly-back' is unchecked in this case) - the scan shape must be (Scan_X, Scan_Y) = (Scan_X, Scan_X-1)  
 ![MIB_convert](img/known_shape.png)
 - The necessary options to specify are normally:  
     - 'Year'
