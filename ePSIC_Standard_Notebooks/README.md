@@ -16,13 +16,14 @@
 - hdf5 files can be read using 'H5PY' or 'HyperSpy' ([Example](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/automatic_Au_xgrating_calibration/au_xgrating_cal_submit.ipynb))
 - Details can be found inside the notebook (Do not use GPU nodes for no reason)  
 ![MIB_convert](img/mib_conversion.png)
-- Currently, when the data is acquired simultaneously with EDX, the scan shape must be manually specified using 'known_shape' widget (make sure that 'Use Fly-back' is unchecked in this case) - the scan shape must be (Scan_X, Scan_Y) = (Scan_X, Scan_X-1)  
+- Currently, when the data is acquired simultaneously with EDX, the scan shape must be manually specified using 'known_shape' widget (make sure that 'Use Fly-back' is unchecked in this case) - the scan shape must be (Scan_X, Scan_Y) = (Scan_X, Scan_X-1)
+- But, in most cases, 'Auto reshape' will determine the scan shape, so you don't have to use other options for reshaping
 ![MIB_convert](img/known_shape.png)
 - The necessary options to specify are normally:  
     - 'Year'
     - 'Session'
     - 'Subfolder' or 'All MIB files in 'Merlin' folder'
-    - 'Use Fly-back' or 'Known_shape' and enter the scan shape
+    - 'Auto reshape' (optionally 'Use Fly-back' or 'Known_shape' and enter the scan shape)
     - 'Create slurm batch file'
     - 'Create conversion info file'
     - 'Submit a slurm job'
