@@ -8,6 +8,7 @@
 - This guide only deals with the data acquired using E02 (Grand ARM300CF; JEOL, MerlinEM; Quantum Detectors, Aztec; Oxford Instruments)
 - Please refer to the following article to see what you can do with 4DSTEM: [py4DSTEM: A Software Package for Four-Dimensional Scanning Transmission Electron Microscopy Data Analysis](https://dx.doi.org/10.1017/S1431927621000477)
 - [py4DSTEM](https://github.com/py4dstem/py4DSTEM) and [pyxem](https://github.com/pyxem/pyxem?tab=readme-ov-file) are very useful generally for 4DSTEM data processing and analysis
+- Please contact Jinseok Ryu, PhD (jinseok.ryu@diamond.ac.uk) if you have any questions
 
 # MIB conversion
 - The format of raw 4DSTEM data is '.mib'
