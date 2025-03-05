@@ -1,6 +1,6 @@
 # Notice
 - This guide only applies if you're using the jupyterhub server of Diamond Light Source
-- The instruction here focuses mainly on data processing and analysis of scanning electron nannodiffraction (SEND) or nanobeam electron diffraction (NBD or NBED) four-dimensional scanning transmission electron microscopy (4DSTEM) data.
+- __The instruction here focuses mainly on data processing and analysis of scanning electron nannodiffraction (SEND) or nanobeam electron diffraction (NBD or NBED) four-dimensional scanning transmission electron microscopy (4DSTEM) data__
 - __The notebooks will submit jobs to the DLS cluster node for data processing, so users must complete the ssh key setting__
 - The ipython notebooks or Python scripts should be modified if you want to perform them on your computer system
 - This workflow has been optimised for the Python kernel of 'epsic3.10'  
@@ -9,7 +9,7 @@
 - This guide only deals with the data acquired using E02 (Grand ARM300CF; JEOL, MerlinEM; Quantum Detectors, Aztec; Oxford Instruments)
 - Please refer to the following article to see what you can do with 4DSTEM: [py4DSTEM: A Software Package for Four-Dimensional Scanning Transmission Electron Microscopy Data Analysis](https://dx.doi.org/10.1017/S1431927621000477)
 - [py4DSTEM](https://github.com/py4dstem/py4DSTEM) and [pyxem](https://github.com/pyxem/pyxem?tab=readme-ov-file) are very useful generally for 4DSTEM data processing and analysis
-- Please contact Jinseok Ryu, PhD (jinseok.ryu@diamond.ac.uk) if you have any questions
+- Please contact Jinseok Ryu, PhD (jinseok.ryu@diamond.ac.uk) if you have any questions about this workflow
 
 # MIB conversion
 - The format of raw 4DSTEM data is '.mib'
