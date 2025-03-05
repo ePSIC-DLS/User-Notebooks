@@ -1,22 +1,34 @@
 # Notice
-- This guide is only valid if you're using the jupyterhub server of Diamond Light Source
+- This guide only applies if you're using the jupyterhub server of Diamond Light Source
+- __The instruction here focuses mainly on data processing and analysis of scanning electron nannodiffraction (SEND) or nanobeam electron diffraction (NBD or NBED) four-dimensional scanning transmission electron microscopy (4DSTEM) data__
+- __The notebooks will submit jobs to the DLS cluster node for data processing, so users must complete the ssh key setting__
 - The ipython notebooks or Python scripts should be modified if you want to perform them on your computer system
 - This workflow has been optimised for the Python kernel of 'epsic3.10'  
 ![Notice](img/jupyterhub_kernel.png)
 - [Instructions to connect to Diamond's JupyterHub](https://diamondlightsource.atlassian.net/wiki/spaces/EPSICWEB/pages/167346199/Instructions+to+connect+to+Diamond+s+JupyterHub)
-- This guide only deals with the data acquired using E02 (Grand ARM 300; JEOL, MerlinEM; Quantum Detectors, Aztec; Oxford Instruments)
+- This guide only deals with the data acquired using E02 (Grand ARM300CF; JEOL, MerlinEM; Quantum Detectors, Aztec; Oxford Instruments)
 - Please refer to the following article to see what you can do with 4DSTEM: [py4DSTEM: A Software Package for Four-Dimensional Scanning Transmission Electron Microscopy Data Analysis](https://dx.doi.org/10.1017/S1431927621000477)
 - [py4DSTEM](https://github.com/py4dstem/py4DSTEM) and [pyxem](https://github.com/pyxem/pyxem?tab=readme-ov-file) are very useful generally for 4DSTEM data processing and analysis
+- Please contact Jinseok Ryu, PhD (jinseok.ryu@diamond.ac.uk) if you have any questions about this workflow
 
 # MIB conversion
 - The format of raw 4DSTEM data is '.mib'
-- After acquiring the data, the mib files should be converted into the 'hdf5' files using 'MIB_conversion/MIB_convert.ipynb'
+- After acquiring the data, the mib files must be converted into the 'hdf5' files using 'MIB_conversion/MIB_convert.ipynb'
 - The codes for the MIB conversion can be found in [epsic_tools - MIB_convert_widget](https://github.com/ePSIC-DLS/epsic_tools/tree/master/epsic_tools/mib2hdfConvert/MIB_convert_widget/scripts)
 - hdf5 files can be read using 'H5PY' or 'HyperSpy' ([Example](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/automatic_Au_xgrating_calibration/au_xgrating_cal_submit.ipynb))
-- Details can be found inside the notebook  
+- Details can be found inside the notebook (Do not use GPU nodes for no reason)  
 ![MIB_convert](img/mib_conversion.png)
-- Currently, when the data is acquired simultaneously with EDX, the scan shape must be manually specified using 'known_shape' widget - the scan shape must be (Scan_X, Scan_Y) = (Scan_X, Scan_X-1)  
+- Currently, when the data is acquired simultaneously with EDX, the scan shape must be manually specified using 'known_shape' widget (make sure that 'Use Fly-back' is unchecked in this case) - the scan shape must be (Scan_X, Scan_Y) = (Scan_X, Scan_X-1)
+- But, in most cases, 'Auto reshape' will determine the scan shape, so you don't have to use other options for reshaping
 ![MIB_convert](img/known_shape.png)
+- The necessary options to specify are normally:  
+    - 'Year'
+    - 'Session'
+    - 'Subfolder' or 'All MIB files in 'Merlin' folder'
+    - 'Auto reshape' (optionally 'Use Fly-back' or 'Known_shape' and enter the scan shape)
+    - 'Create slurm batch file'
+    - 'Create conversion info file'
+    - 'Submit a slurm job'
 # Obtaining the calibration information using the Au reference data
 - The reciprocal pixel size of scanning electron nanodiffraction (SEND) data (4DSTEM data acquired using a pencil beam) should be retrieved from the Au reference data
 - The ellipticity of diffraction rings should also be calculated
@@ -24,7 +36,9 @@
 ![calibration](img/au_calibration.png)![calibration](img/au_calibration_json.png)
 - Please visit the following page for the details of this process: [py4DSTEM - Au calibration](https://github.com/ePSIC-DLS/Hyperspy_Workshop_2024/blob/main/py4DSTEM/orientation_01_AuAgPd_wire.ipynb)
 - The names of the session and the subfolder should be manually entered
-- After this process has been finished, it is recommended checking the quality of the process by looking at the notebook file stored in each reference data directory  
+- After this process has been finished, it is recommended checking the quality of the process by looking at the notebook ('submitted_notebook.nbconvert.ipynb') stored in each reference data directory
+- If the result of detecting a diffraction ring does not look accurate, try again after changing the value of 'q_range' or 'pixel_size_inv_Ang' in 'au_xgrating_cal_submit.ipynb'
+- Or you can manually run 'submitted_notebook.nbconvert.ipynb' for each calibration data to test a different 'q_range' or 'pixel_size_inv_Ang'  
 ![calibration](img/au_calibration_notebook.png)
 ![calibration](img/au_calibration_result.png)
 *Check the calibration quality (comparison between the flattened data and the simulated XRD of gold)*
