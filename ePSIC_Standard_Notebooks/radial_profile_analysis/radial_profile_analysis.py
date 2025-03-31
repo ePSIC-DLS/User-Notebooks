@@ -27,10 +27,11 @@ import time
 
 class radial_profile_analysis():
     def __init__(self, base_dir, subfolders, profile_length, num_load, final_dir=None,
-                 include_key=None, exclude_key=None, limit_scan_region=None, 
+                 include_key=None, exclude_key=None, 
                  simult_edx=False, edx_key='', 
                  roll_axis=True, edx_crop=[0, 0], verbose=True):
 
+        # create a customized colorbar
         self.color_rep = ["black", "red", "green", "blue", "orange", "purple", "yellow", "lime", 
                     "cyan", "magenta", "lightgray", "peru", "springgreen", "deepskyblue", 
                     "hotpink", "darkgray"]
@@ -169,20 +170,14 @@ class radial_profile_analysis():
                 data = hs.load(adr)
                 print('original profile size = ', data.data.shape[-1])
                 file_adr.append(adr)
-                if limit_scan_region != None:
-                    data.data = data.data[:limit_scan_region[0], :limit_scan_region[1], :profile_length].copy()
-                    data.axes_manager[0].size = data.data.shape[1]
-                    data.axes_manager[1].size = data.data.shape[0]
-                    data.axes_manager[2].size = data.data.shape[2]
-                else:
-                    data.data = data.data[:, :, :profile_length].copy()
+                data.data = data.data[:, :, :profile_length]
                 local_radial_var_sum = data.mean()
                 pixel_size_inv_Ang = local_radial_var_sum.axes_manager[-1].scale
 
                 if simult_edx:
                     edx_data = hs.load(edx_adr_[e]).data
                     if roll_axis:
-                        edx_data = np.rollaxis(edx_data, 0, 3)[:limit_scan_region[0], :limit_scan_region[1]]
+                        edx_data = np.rollaxis(edx_data, 0, 3)[:data.data.shape[0], :data.data.shape[1]]
                     edx_data = hs.signals.Signal1D(edx_data)
 
                 if verbose:
@@ -242,13 +237,7 @@ class radial_profile_analysis():
                         data = hs.load(adr_)
                     
                 loaded_data_mean.append(adr_)
-                if limit_scan_region != None:
-                    data.data = data.data[:limit_scan_region[0], :limit_scan_region[1], :profile_length].copy()
-                    data.axes_manager[0].size = data.data.shape[1]
-                    data.axes_manager[1].size = data.data.shape[0]
-                    data.axes_manager[2].size = data.data.shape[2]
-                else:
-                    data.data = data.data[:, :, :profile_length].copy()
+                data.data = data.data[:, :, :profile_length]
                 local_radial_avg_sum = data.mean()
                 radial_avg_list.append(data)
                 radial_avg_sum_list.append(local_radial_avg_sum.data)
@@ -277,8 +266,7 @@ class radial_profile_analysis():
 
                 BF_disc_list.append(data)
             BF_disc_align.append(BF_disc_list)
-        
-        self.limit_scan_region = limit_scan_region
+
         self.pixel_size_inv_Ang = pixel_size_split[0][0]
 
         self.base_dir = base_dir
@@ -570,12 +558,7 @@ class radial_profile_analysis():
         else:
             self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_ind, self.to_ind, 1], 
                                     dat_scale=self.pixel_size_inv_Ang, rescale=rescale_SI, DM_file=True, verbose=verbose)           
-        if self.limit_scan_region != None:
-            for i in range(self.run_SI.num_img):
-                self.run_SI.data_shape[i] = [self.limit_scan_region[0], self.limit_scan_region[1], self.run_SI.data_shape[i][2]]
-                self.run_SI.original_data_shape[i] = [self.limit_scan_region[0], self.limit_scan_region[1], self.run_SI.data_shape[i][2]]
-                self.run_SI.data_storage[i] = self.run_SI.data_storage[i][:self.limit_scan_region[0], :self.limit_scan_region[1]]
-            
+
         # NMF - prepare the input dataset
         self.run_SI.make_input(min_val=0.0, max_normalize=max_normalize, rescale_0to1=rescale_0to1)
 
@@ -1196,7 +1179,8 @@ class radial_profile_analysis():
                             ax[1].imshow(clustered, cmap='tab20')
                             fig.suptitle(self.subfolders[i]+'\nLoading vector %d\n'%(lv+1)+os.path.basename(self.loaded_data_path[i][j])[:15]+"\nBefore and After clustering")
                             plt.show()
-                    clustered_lv.append(clustered_sub)
+
+                        clustered_lv.append(clustered_sub)
                 clustered_split.append(clustered_lv)
 
             self.clustered_split = clustered_split
@@ -1204,7 +1188,6 @@ class radial_profile_analysis():
         if self.threshold_map_small == "variance":
             clustered_split = []
             for i in range(len(self.subfolders)):
-                append_flag = False
                 clustered_sub = []
                 num_img = len(self.radial_var_split[i])
                 for j in range(num_img):
@@ -1228,7 +1211,9 @@ class radial_profile_analysis():
                         fig.suptitle(self.subfolders[i]+'-'%(lv+1)+os.path.basename(self.loaded_data_path[i][j])[:15]+"\nBefore and After clustering")
                         fig.tight_layout()
                         plt.show()
-                clustered_split.append(clustered_sub)
+
+                    clustered_lv.append(clustered_sub)
+                clustered_split.append(clustered_lv)
 
             self.clustered_split = clustered_split            
         
@@ -1258,10 +1243,7 @@ class radial_profile_analysis():
                 centroid_label = []
                 boundary_label = []
                 virtual_label = []
-                try:
-                    label_cluster = self.clustered_split[lv][self.sub_ind][0]
-                except:
-                    continue
+                label_cluster = self.clustered_split[lv][0][0]
                 label_list = np.unique(label_cluster)
 
                 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
@@ -1343,7 +1325,7 @@ class radial_profile_analysis():
             data_name = data_name[0]+'_'+data_name[1]
             print("save prefix: ", data_name)
 
-            label_cluster = self.clustered_split[self.sub_ind][0]
+            label_cluster = self.clustered_split[0][0]
             label_list = np.unique(label_cluster)
             print(label_list)
 
@@ -1411,10 +1393,7 @@ class radial_profile_analysis():
         if self.threshold_map_small == 'NMF':
             fig_tot, ax_tot = plt.subplots(1, 1, figsize=(6, 6))
             for lv in range(self.num_comp):
-                try:
-                    label_cluster = self.clustered_split[lv][self.sub_ind][0]
-                except:
-                    continue
+                label_cluster = self.clustered_split[lv][0][0]
                 label_list = np.unique(label_cluster).astype(int)
                 fig, ax = plt.subplots(1, 2, figsize=(12, 6))
                 ax[0].imshow(label_cluster, cmap='tab20')

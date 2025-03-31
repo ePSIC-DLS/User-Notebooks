@@ -7,6 +7,7 @@ import hyperspy.api as hs
 import matplotlib.pyplot as plt
 import numpy as np
 
+import py4DSTEM
 from py4DSTEM import DataCube, show
 from py4DSTEM.preprocess.preprocess import filter_hot_pixels, datacube_diffraction_shift
 from py4DSTEM.process.calibration import fit_ellipse_amorphous_ring
@@ -72,6 +73,8 @@ for this_dict in cal_dict_list:
 
 R_Q_ROTATION = eval(info['R_Q_ROTATION'])
 also_rpl = eval(info['also_rpl'])
+mask_path = info['mask_path']
+fast_origin = eval(info['fast_origin'])
 print(type(R_SCALE), R_SCALE)
 print(type(Q_SCALE), Q_SCALE)
 print(type(PARAMS), PARAMS)
@@ -81,11 +84,13 @@ print(type(BEAMLINE), BEAMLINE)
 print(type(YEAR), YEAR)
 print(type(VISIT), VISIT)
 print(type(also_rpl), also_rpl)
+print(type(mask_path), mask_path)
+print(type(fast_origin), fast_origin)
 
 def fast_find_origin(datacube, dp, pad=None):
     (qrad_init, qx0_init, qy0_init) = get_probe_size(dp.data)
     if pad is None:
-        window = int(3*qrad_init)
+        window = int(2*qrad_init)
     else:
         window = qrad_init + int(pad)
     (qx0r, qy0r) = int(qx0_init//1), int(qy0_init//1)
@@ -145,8 +150,6 @@ def elliptical_resample_datacube_with_RQ_rotation(datacube, p_ellipse, r_q_rotat
     for rx, ry in tqdmnd(datacube.R_Nx, datacube.R_Ny):
         datacube.data[rx, ry] = apply_affine(datacube.data[rx,ry], p_ellipse, r_q_rotation)
         
-
-
     return mean_arr, var_arr, datacube.data #datacube not returned as modified in-place
 
 def build_hs_3d(array, r_scale, q_scale, name, **kwargs):
@@ -160,25 +163,130 @@ def build_hs_3d(array, r_scale, q_scale, name, **kwargs):
     hs_3d.axes_manager[2].name = name
     return hs_3d
 
+                   
+if mask_path != '':
+    try:
+        with h5py.File(info["mask_path"],'r') as f:
+            mask = f['data']['mask'][()]
+        mask = np.bool_(mask)
+        mask = np.invert(mask)
+        mask = mask.astype(np.unit8)
+
+    except:
+        with h5py.File(info["mask_path"],'r') as f:
+            mask = f['root']['np.array']['data'][()]
+        mask = np.bool_(mask)
+        mask = np.invert(mask)
+        mask = mask.astype(np.unit8)        
+    
+    print(type(mask))
+    print(mask.dtype)
+
 ## Load data using Hyperspy
 data_hs = hs.load(data_path, reader='hspy', lazy=False)
 
-## Move to py4DSTEM DataCube (note: not a deepcopy)
-data = DataCube(data_hs.data)
+if mask_path != '':
+    ## Move to py4DSTEM DataCube (note: not a deepcopy)
+    data = DataCube(np.multiply(data_hs.data, mask).astype(np.unit8))
+    
+else:
+    ## Move to py4DSTEM DataCube (note: not a deepcopy)
+    data = DataCube(data_hs.data)
+    ## Filter hot pixels in-place
+    filter_hot_pixels(data, thresh=0.1)
 
-## Filter hot pixels in-place
-filter_hot_pixels(data, thresh=0.1)
-
+    
 ##Get initial raw mean diffraction pattern
-data.get_virtual_diffraction(method='mean',
-                             name='dp_mean_raw',
+data.get_virtual_diffraction(method='max',
+                             name='dp_max_raw',
                              shift_center=False)
 
-## Get origin shifts
-(qx0, qy0) = fast_find_origin(data, dp=data.tree('dp_mean_raw').data)
+fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+ax.imshow(np.sqrt(data.tree('dp_max_raw').data), cmap='gray')
+ax.axis('off')
+fig.tight_layout()
+fig.savefig(f'{save_dir}{os.sep}{cal_timestamp}_original_max_dp.png')
 
-## Fit origin shifts
-(qx0_fit, qy0_fit, qx0_res, qy0_res) = fit_origin((qx0, qy0))
+if fast_origin:
+    ## Get origin shifts
+    (qx0, qy0) = fast_find_origin(data, dp=data.tree('dp_max_raw').data)
+
+    ## Fit origin shifts
+    (qx0_fit, qy0_fit, qx0_res, qy0_res) = fit_origin((qx0, qy0))
+else:
+    pad = None
+    (qrad_init, qx0_init, qy0_init) = get_probe_size(data.tree('dp_max_raw').data)
+    print('the radius of the probe: ', qrad_init)
+    print('initial qx0 and qy0: (%f, %f)'%(qx0_init,
+                                           qy0_init))
+    if pad is None:
+        window = int(2*qrad_init)
+    else:
+        window = qrad_init + int(pad)
+    print("the window size: ", window)
+    (qx0r, qy0r) = int(qx0_init//1), int(qy0_init//1)
+    (x_lower, x_upper) =  int(qx0r - window), int(qx0r + window)
+    (y_lower, y_upper) =  int(qy0r - window), int(qy0r + window)
+    d_cent = DataCube(data.data[:,:,x_lower:x_upper,y_lower:y_upper])
+    print(d_cent)
+
+    probe_semiangle = 4
+
+    syn_probe_width='3'
+    syn_probe_rad = int(probe_semiangle)
+    syn_probe_width = float(syn_probe_width)
+
+    syn_probe = py4DSTEM.braggvectors.probe.Probe.generate_synthetic_probe(syn_probe_rad, 
+                                                                           syn_probe_width, 
+                                                                           (d_cent.data.shape[-1], 
+                                                                            d_cent.data.shape[-1]))
+
+
+    syn_probe_kernel = syn_probe.get_kernel(
+        mode = 'sigmoid',
+        radii = (probe_semiangle * 1, probe_semiangle * 3.0),
+        bilinear=True,
+    )
+
+    detect_params = {
+        'corrPower': 1.0,
+        'sigma': 0,
+        'edgeBoundary': 2,
+        'minRelativeIntensity': 0,
+        'minAbsoluteIntensity': 0.25,
+        'minPeakSpacing': 2,
+        'subpixel' : 'poly',
+        'upsample_factor': 2,
+        'maxNumPeaks': 1000,
+    }
+
+    bragg_peaks = d_cent.find_Bragg_disks(
+        template = syn_probe_kernel,
+        **detect_params,
+    )
+    
+    
+    # Measure the origin
+    center_guess = (qx0r, qy0r)
+    # radial_range = (8,200)
+    qx0_meas,qy0_meas,mask_meas = bragg_peaks.measure_origin(
+        center_guess=center_guess,
+        score_method='intensity',
+        # findcenter='max',
+    )
+    
+    
+    # Fit a plane to the origins
+    qx0_fit, qy0_fit, qx0_residuals, qy0_residuals = bragg_peaks.fit_origin(
+        robust= True,
+        robust_thresh= 1.2,
+    )
+    
+    qx0_fit += x_lower
+    qy0_fit += y_lower
+    qx0_fit[np.where(np.isnan(qx0_fit))] = qx0_init
+    qx0_fit[np.where(np.isnan(qy0_fit))] = qy0_init
+
 
 ## Embed calibrations
 data.calibration.set_origin((qx0_fit, qy0_fit))
