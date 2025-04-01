@@ -27,7 +27,7 @@ import time
 
 class radial_profile_analysis():
     def __init__(self, base_dir, subfolders, profile_length, num_load, final_dir=None,
-                 include_key=None, exclude_key=None, 
+                 include_key=None, exclude_key=None, specific_scan_shape=None,
                  simult_edx=False, edx_key='', 
                  roll_axis=True, edx_crop=[0, 0], verbose=True):
 
@@ -45,6 +45,7 @@ class radial_profile_analysis():
         radial_var_sum_split = []
         pixel_size_split = []
         loaded_data_path = []
+        loaded_edx_path = []
 
         new_process_flag = True
         
@@ -166,9 +167,13 @@ class radial_profile_analysis():
             file_adr = []
             pixel_size_list = []
             scan_step_list = []
+            edx_adr = []
             for e, adr in enumerate(file_adr_):
                 data = hs.load(adr)
                 print('original profile size = ', data.data.shape[-1])
+                if specific_scan_shape != []:
+                    if data.data.shape[:2] != tuple(specific_scan_shape):
+                        continue
                 file_adr.append(adr)
                 data.data = data.data[:, :, :profile_length]
                 local_radial_var_sum = data.mean()
@@ -176,9 +181,15 @@ class radial_profile_analysis():
 
                 if simult_edx:
                     edx_data = hs.load(edx_adr_[e]).data
+                    edx_adr.append(edx_adr_[e])
                     if roll_axis:
                         edx_data = np.rollaxis(edx_data, 0, 3)[:data.data.shape[0], :data.data.shape[1]]
                     edx_data = hs.signals.Signal1D(edx_data)
+                    if data.data.shape[:2] != edx_data.data.shape[:2]:
+                        print("The scan shape are different")
+                        print(adr)
+                        print(edx_adr_[e])
+                        return
 
                 if verbose:
                     print("radial profile data information")
@@ -208,7 +219,8 @@ class radial_profile_analysis():
             if simult_edx:
                 edx_avg_list = np.asarray(edx_avg_list)
                 edx_split.append(edx_tmp_list)
-                edx_avg_split.append(edx_avg_list)                
+                edx_avg_split.append(edx_avg_list)
+                loaded_edx_path.append(edx_adr)
 
         # mean profile data load
         loaded_data_mean_path = []
@@ -283,6 +295,9 @@ class radial_profile_analysis():
         self.loaded_data_mean_path = loaded_data_mean_path
         self.BF_disc_align = BF_disc_align
         self.new_process_flag = new_process_flag
+        
+        if simult_edx:
+            self.loaded_edx_path = loaded_edx_path
         
         print("data loaded.")
 
@@ -598,6 +613,7 @@ class radial_profile_analysis():
                         ax.flat[j].imshow(sum_map, cmap='gray')
                         for lv in range(num_comp):
                             transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
+                            transparency = np.nan_to_num(transparency)
                             transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
                             ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
                                               cmap=self.cm_rep[lv+1], 
@@ -635,6 +651,7 @@ class radial_profile_analysis():
                         ax.flat[j].imshow(sum_map, cmap='gray')
                         for lv in range(num_comp):
                             transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
+                            transparency = np.nan_to_num(transparency)
                             transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
                             ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
                                               cmap=self.cm_rep[lv+1], 
@@ -672,6 +689,7 @@ class radial_profile_analysis():
                         if i == 0 and j == 0:
                             print("Color map of loading vector %d = %s"%(lvs, self.cm_rep[c+1]))
                         transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
+                        transparency = np.nan_to_num(transparency)
                         transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
                         ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
                                           cmap=self.cm_rep[c+1], 
@@ -692,12 +710,14 @@ class radial_profile_analysis():
         thresh_coeff_split = []
         lv_mean_split = []
         lv_line = []
+        high_coeff_area_split = []
 
         for lv in range(self.num_comp):
             lv_tot = np.zeros(self.profile_length)
             total_num = 0
             coeff_lv = []
             thresh_coeff_lv = []
+            high_coeff_area_lv = []
             lv_mean_lv = []
             fig_lv, ax_lv = plt.subplots(1, 3, figsize=(12, 4))
             ax_lv[0].plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
@@ -719,6 +739,7 @@ class radial_profile_analysis():
                 sub_num = 0
                 coeff = []
                 thresh_coeff = []
+                high_coeff_area = []
                 lv_mean = []
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
@@ -734,6 +755,8 @@ class radial_profile_analysis():
                     coeff_map[coeff_map<=thresh] = 0
                     coeff_map[coeff_map>thresh] = 1
                     thresh_coeff.append(coeff_map)
+                    area = self.radial_var_split[i][j].axes_manager[0].scale**2 * np.sum(coeff_map)/coeff_map.size
+                    high_coeff_area.append(area)
 
                     ax.flat[j*2].imshow(coeff_map, cmap='gray')
                     if visual_title:
@@ -787,10 +810,12 @@ class radial_profile_analysis():
                 fig.tight_layout()
                 coeff_lv.append(coeff)
                 thresh_coeff_lv.append(thresh_coeff)
+                high_coeff_area_lv.append(high_coeff_area)
                 lv_mean_lv.append(lv_mean)
                 
             coeff_split.append(coeff_lv)
             thresh_coeff_split.append(thresh_coeff_lv)
+            high_coeff_area_split.append(high_coeff_area_lv)
             lv_mean_split.append(lv_mean_lv)
             
             if total_num != 0:
@@ -811,6 +836,7 @@ class radial_profile_analysis():
             
         self.coeff_split = coeff_split
         self.thresh_coeff_split = thresh_coeff_split
+        self.high_coeff_area_split = high_coeff_area_split
         self.lv_mean_split = lv_mean_split
 
         return lv_line
