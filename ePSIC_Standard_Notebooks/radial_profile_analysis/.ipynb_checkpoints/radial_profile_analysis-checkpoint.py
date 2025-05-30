@@ -9,6 +9,8 @@ from scipy.ndimage import gaussian_filter
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+plt.rcParams['font.family'] = 'Nimbus Roman'
+
 import py4DSTEM
 import hyperspy.api as hs
 
@@ -20,14 +22,14 @@ from matplotlib.colors import ListedColormap
 from matplotlib.colors import hsv_to_rgb
 from sklearn.decomposition import NMF, PCA
 from sklearn.manifold import TSNE
-from sklearn.cluster import OPTICS
+from sklearn.cluster import OPTICS, DBSCAN
 import ipywidgets as pyw
 import time
 
 
 class radial_profile_analysis():
     def __init__(self, base_dir, subfolders, profile_length, num_load, final_dir=None,
-                 include_key=None, exclude_key=None, limit_scan_region=[1000, 1000], 
+                 include_key=None, exclude_key=None, specific_scan_shape=None,
                  simult_edx=False, edx_key='', 
                  roll_axis=True, edx_crop=[0, 0], verbose=True):
 
@@ -45,11 +47,14 @@ class radial_profile_analysis():
         radial_var_sum_split = []
         pixel_size_split = []
         loaded_data_path = []
+        loaded_edx_path = []
 
         new_process_flag = True
         
+        print(final_dir)
+        
         for i, sub in enumerate(subfolders):
-            if final_dir == None or final_dir or [] or final_dir == '':  
+            if final_dir == None or final_dir == [] or final_dir == '':  
                 if simult_edx:
                     edx_adrs = glob.glob(base_dir+'/'+sub+'/*/*/EDX/*.rpl', recursive=True)
                     if edx_adrs == []:
@@ -114,7 +119,7 @@ class radial_profile_analysis():
                     edx_adrs = np.asarray(edx_adrs)
                     edx_adrs = edx_adrs[:len(key_list)]
             
-                if len(key_list) >= num_load:
+                if len(key_list) > num_load:
                     ri = np.random.choice(len(key_list), num_load, replace=False)
                     file_adr_ = key_list[ri]
                     if simult_edx:
@@ -140,7 +145,7 @@ class radial_profile_analysis():
                 if simult_edx:
                     edx_adr_ = edx_adrs
                     
-                if len(key_list) >= num_load:
+                if len(key_list) > num_load:
                     ri = np.random.choice(len(key_list), num_load, replace=False)
                     file_adr_ = key_list[ri]
                     if simult_edx:
@@ -153,7 +158,8 @@ class radial_profile_analysis():
             print("number of data in subfolder '%s'"%sub)
             #print(*file_adr_, sep='\n')
             print(len(file_adr_))
-                
+            file_adr_.sort()
+            edx_adr_.sort()
             # for f_adr, e_adr in zip(file_adr_, edx_adr_):
             #     print(f_adr.split('/')[-1], e_adr.split('/')[-1])
 
@@ -164,9 +170,13 @@ class radial_profile_analysis():
             file_adr = []
             pixel_size_list = []
             scan_step_list = []
+            edx_adr = []
             for e, adr in enumerate(file_adr_):
                 data = hs.load(adr)
                 print('original profile size = ', data.data.shape[-1])
+                if specific_scan_shape != []:
+                    if data.data.shape[:2] != tuple(specific_scan_shape):
+                        continue
                 file_adr.append(adr)
                 data.data = data.data[:, :, :profile_length]
                 local_radial_var_sum = data.mean()
@@ -174,9 +184,15 @@ class radial_profile_analysis():
 
                 if simult_edx:
                     edx_data = hs.load(edx_adr_[e]).data
+                    edx_adr.append(edx_adr_[e])
                     if roll_axis:
-                        edx_data = np.rollaxis(edx_data, 0, 3)[:limit_scan_region[0], :limit_scan_region[1]]
+                        edx_data = np.rollaxis(edx_data, 0, 3)[:data.data.shape[0], :data.data.shape[1]]
                     edx_data = hs.signals.Signal1D(edx_data)
+                    if data.data.shape[:2] != edx_data.data.shape[:2]:
+                        print("The scan shape are different")
+                        print(adr)
+                        print(edx_adr_[e])
+                        return
 
                 if verbose:
                     print("radial profile data information")
@@ -206,7 +222,8 @@ class radial_profile_analysis():
             if simult_edx:
                 edx_avg_list = np.asarray(edx_avg_list)
                 edx_split.append(edx_tmp_list)
-                edx_avg_split.append(edx_avg_list)                
+                edx_avg_split.append(edx_avg_list)
+                loaded_edx_path.append(edx_adr)
 
         # mean profile data load
         loaded_data_mean_path = []
@@ -282,10 +299,13 @@ class radial_profile_analysis():
         self.BF_disc_align = BF_disc_align
         self.new_process_flag = new_process_flag
         
+        if simult_edx:
+            self.loaded_edx_path = loaded_edx_path
+        
         print("data loaded.")
 
 
-    def center_beam_alignment_check(self, crop=[0, -1, 0, -1]):
+    def center_beam_alignment_check(self, crop=[0, -1, 0, -1], visual_title=True, title_font_size=10):
 
         self.crop = crop
         top, bottom, left, right = self.crop
@@ -295,46 +315,52 @@ class radial_profile_analysis():
             print(num_img)
             grid_size = int(np.around(np.sqrt(num_img)))
             if num_img == 1:
-                fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                 ax = np.array([ax])
             elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
             else:
-                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
             for j in range(num_img):
                 ax.flat[j].imshow(self.BF_disc_align[i][j][top:bottom, left:right])
-                ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                if visual_title:
+                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
                 ax.flat[j].axis("off")                  
             fig.suptitle(self.subfolders[i]+' BF disc align result')
-            fig.tight_layout()
+            plt.subplots_adjust(hspace=0.1, wspace=0.1)
+            if visual_title:
+                fig.tight_layout()
             plt.show()
 
     
-    def intensity_integration_image(self):
+    def intensity_integration_image(self, visual_title=True, title_font_size=10):
     
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_avg_split[i])
             grid_size = int(np.around(np.sqrt(num_img)))
             if num_img == 1:
-                fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                 ax = np.array([ax])
             elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
             else:
-                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
             for j in range(num_img):
                 sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
                 ax.flat[j].imshow(sum_map, cmap='inferno')
-                ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                if visual_title:
+                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
                 ax.flat[j].axis("off")              
             fig.suptitle(self.subfolders[i]+' sum of intensities map')
-            fig.tight_layout()
+            plt.subplots_adjust(hspace=0.1, wspace=0.1)
+            if visual_title:
+                fig.tight_layout()
             plt.show()
 
     
     def basic_setup(self, str_path, from_unit, to_unit, broadening=0.01, 
                     fill_width=0.1, height=None, width=None, threshold=None, 
-                    distance=None, prominence=0.001, visual=True):
+                    distance=None, prominence=0.001, visual=True, visual_legend=True):
         print("Original scattering vector range = [%.6f, %.6f]"%(0, self.profile_length*self.pixel_size_inv_Ang))
         
         self.str_path = str_path
@@ -382,9 +408,10 @@ class radial_profile_analysis():
                 peak_sf[str_name] = peaks
 
                 if visual:
-                    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+                    fig, ax = plt.subplots(1, 1, figsize=(8, 6), dpi=300)
                     ax.plot(self.x_axis, int_sf[str_name], 'k-', label=str_name)
-                    ax.legend(loc='right')
+                    if visual_legend:
+                        ax.legend(loc='right')
     
                     for j, peak in enumerate(peaks):
                         if peak >= self.from_ and peak <= self.to_:
@@ -398,7 +425,7 @@ class radial_profile_analysis():
             
             if visual:
                 int_sf["sum_of_all"] = np.sum(list(int_sf.values()), axis=0)
-                fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+                fig, ax = plt.subplots(1, 1, figsize=(8, 6), dpi=300)
                 ax.plot(self.x_axis, int_sf["sum_of_all"], 'k-', label="sum of all")
                 ax.legend(loc='right')
                 fig.tight_layout()
@@ -411,26 +438,28 @@ class radial_profile_analysis():
             print(*int_sf.keys(), sep="\n")
     
     
-    def sum_radial_profile(self, str_name=None, profile_type="variance"):            
-
-        fig_tot, ax_tot = plt.subplots(2, 1, figsize=(8, 12))
+    def sum_radial_profile(self, str_name=None, profile_type="variance", 
+                           visual_legend=True, visual_title=True, title_font_size=10,
+                          axis_off=True):            
+        
+        fig_tot, ax_tot = plt.subplots(2, 1, figsize=(8, 12), dpi=300)
         
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_var_sum_split[i])
             grid_size = int(np.around(np.sqrt(num_img)))
             
-            fig_sub, ax_sub = plt.subplots(2, 1, figsize=(8, 12))
+            fig_sub, ax_sub = plt.subplots(2, 1, figsize=(8, 12), dpi=300)
             ax_sub_twin = ax_sub[1].twinx()
         
             total_sp = []
             
             if num_img == 1:
-                fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                 ax = np.array([ax])
             elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
             else:
-                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
             for j, sp in enumerate(self.radial_var_sum_split[i]):
                 
                 if profile_type == "variance":
@@ -442,14 +471,11 @@ class radial_profile_analysis():
                 else:
                     print("Warning! wrong profile type!")
                     return                    
-
-                try:
-                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                    ax.flat[j].legend(loc='upper right')
-                except:
-                    ax.set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                    ax.legend(loc='upper right')                    
                 
+                if visual_title:
+                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
+                if visual_legend:
+                    ax.flat[j].legend(loc='upper right')               
                 
                 ax_twin = ax.flat[j].twinx()
                 if profile_type == "variance":
@@ -461,7 +487,12 @@ class radial_profile_analysis():
                 else:
                     print("Warning! wrong profile type!")
                     return    
-                ax_twin.legend(loc='right')
+                if visual_legend:
+                    ax_twin.legend(loc='right')
+                    
+                if axis_off:
+                    ax.flat[j].tick_params(axis="y", labelsize=0, color='white')
+                    ax_twin.tick_params(axis="y", labelsize=0, color='white')
                 
                 ax_sub[1].plot(self.x_axis, tmp_sp/np.max(tmp_sp), label=self.subfolders[i]+"_"+os.path.basename(self.loaded_data_path[i][j])[:15])
                 ax_sub[1].set_title("max-normalized")
@@ -476,12 +507,14 @@ class radial_profile_analysis():
         
             mean_tot = np.mean(total_sp, axis=0)
             ax_tot[0].plot(self.x_axis, mean_tot, label=self.subfolders[i])
-            ax_tot[0].legend(loc="upper right")
             ax_tot[1].plot(self.x_axis, mean_tot/np.max(mean_tot), label=self.subfolders[i]+" (max-normalized)")
-            ax_tot[1].legend(loc="upper right")
+            if visual_legend:
+                ax_tot[0].legend(loc="upper right")            
+                ax_tot[1].legend(loc="upper right")
             
-            ax_sub[0].legend(loc="upper right")
-            ax_sub[1].legend(loc="upper right")
+            if visual_legend:
+                ax_sub[0].legend(loc="upper right")
+                ax_sub[1].legend(loc="upper right")
             fig.suptitle(self.subfolders[i]+' - scattering vector range %.3f-%.3f (1/Å)'%(self.from_, self.to_))
             fig.tight_layout()
             if profile_type == "variance":
@@ -497,7 +530,7 @@ class radial_profile_analysis():
         plt.show()
 
     
-    def sum_edx(self, edx_from, edx_to, offset=0.0, edx_scale=0.01, visual=True):
+    def sum_edx(self, edx_from, edx_to, offset=0.0, edx_scale=0.01, visual=True, visual_title=True, title_font_size=10, axis_off=True):
         self.edx_dim = self.edx_split[0][0].data.shape[2]
         self.edx_range = np.linspace(0.0, self.edx_dim*edx_scale, self.edx_dim)
         self.edx_offset = offset
@@ -513,28 +546,28 @@ class radial_profile_analysis():
             for i in range(len(self.subfolders)):
                 num_img = len(self.edx_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
-                if num_img == 1:
-                    fig, ax = plt.subplots(1, 1, figsize=(5*2, 5))
-                    ax = np.array([ax])
-                elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
                 else:
-                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
                     
                 for j in range(num_img):
                     edx_sum_map = np.sum(self.edx_split[i][j].data[:, :, self.edx_range_ind[0]:self.edx_range_ind[1]], axis=2)
                     ax.flat[j*2].imshow(edx_sum_map, cmap='inferno')
-                    ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    if visual_title:
+                        ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
                     ax.flat[j*2].axis("off")
                     
                     edx_sum = np.mean(self.edx_split[i][j].data[:, :, self.edx_offset_ind[0]:self.edx_offset_ind[1]], axis=(0, 1))
                     ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], edx_sum, 'k-')
+                    if axis_off:
+                        ax.flat[j*2+1].tick_params(axis="y", labelsize=0, color='white')
                 fig.suptitle(self.subfolders[i]+' EDX intensity map and mean EDX spectrum')
                 fig.tight_layout()
                 plt.show()        
 
     
-    def NMF_decompose(self, num_comp, rescale_SI=False, max_normalize=False, rescale_0to1=True, profile_type="variance", verbose=True, coeff_map_type="absolute"):
+    def NMF_decompose(self, num_comp, scale_crop=True, rescale_SI=False, max_normalize=False, rescale_0to1=True, profile_type="variance", verbose=True, tolerance=1E-4, coeff_map_type="absolute"):
         
         self.num_comp = num_comp
         self.NMF_profile_type = profile_type
@@ -549,21 +582,25 @@ class radial_profile_analysis():
         else:
             print("Warning! wrong profile type!")
             return
-        
-        self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_, self.to_, self.pixel_size_inv_Ang], 
-                                dat_scale=1, rescale=rescale_SI, DM_file=True, verbose=verbose)
+
+        if scale_crop:
+            self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_, self.to_, self.pixel_size_inv_Ang], 
+                                    dat_scale=1, rescale=rescale_SI, DM_file=True, verbose=verbose)
+        else:
+            self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_ind, self.to_ind, 1], 
+                                    dat_scale=self.pixel_size_inv_Ang, rescale=rescale_SI, DM_file=True, verbose=verbose)           
 
         # NMF - prepare the input dataset
         self.run_SI.make_input(min_val=0.0, max_normalize=max_normalize, rescale_0to1=rescale_0to1)
 
         # NMF - NMF decomposition and visualization
-        self.run_SI.ini_DR(method="nmf", num_comp=num_comp, result_visual=verbose, intensity_range=coeff_map_type)
+        self.run_SI.ini_DR(method="nmf", num_comp=num_comp, result_visual=verbose, intensity_range=coeff_map_type, tolerance=tolerance)
 
     
-    def NMF_result(self, lv_show=None, transparency_percentile=100):
+    def NMF_result(self, lv_show=None, transparency_percentile=100, visual_title=True, title_font_size=10):
         
         # Loading vectors
-        fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4), dpi=300)
         for lv in range(self.num_comp):
             ax.plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1], label="lv %d"%(lv+1))
         ax.set_facecolor("lightgray")
@@ -581,27 +618,32 @@ class radial_profile_analysis():
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
                     if num_img == 1:
-                        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                        fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                         ax = np.array([ax])
                     elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
                     else:
-                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
                     for j in range(num_img):
                         sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
                         ax.flat[j].imshow(sum_map, cmap='gray')
                         for lv in range(num_comp):
-                            transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
-                            transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
+                            transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.max(self.run_SI.coeffs_reshape[k][:, :, lv].flatten())
+                            transparency = np.nan_to_num(transparency)
+                            if transparency_percentile != 100:
+                                transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
                             ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
                                               cmap=self.cm_rep[lv+1], 
                                               alpha=transparency)
-                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                        if visual_title:
+                            ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
                         k += 1
                     for a in ax.flat:
                         a.axis('off')
                     fig.suptitle(self.subfolders[i])
-                    fig.tight_layout()
+                    plt.subplots_adjust(hspace=0.1, wspace=0.1)
+                    if visual_title:
+                        fig.tight_layout()
                     plt.show()
     
             else:
@@ -617,27 +659,32 @@ class radial_profile_analysis():
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
                     if num_img == 1:
-                        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                        fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                         ax = np.array([ax])
                     elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
                     else:
-                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
                     for j in range(num_img):
                         sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
                         ax.flat[j].imshow(sum_map, cmap='gray')
                         for lv in range(num_comp):
-                            transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
-                            transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
+                            transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.max(self.run_SI.coeffs_reshape[k][:, :, lv].flatten())
+                            transparency = np.nan_to_num(transparency)
+                            if transparency_percentile != 100:
+                                transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
                             ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
                                               cmap=self.cm_rep[lv+1], 
                                               alpha=transparency)
-                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                        if visual_title:
+                            ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
                         k += 1
                     for a in ax.flat:
                         a.axis('off')
                     fig.suptitle(self.subfolders[i])
-                    fig.tight_layout()
+                    plt.subplots_adjust(hspace=0.1, wspace=0.1)
+                    if visual_title:
+                        fig.tight_layout()
                     plt.show()
 
         elif lv_show != None and lv_show != []:
@@ -650,46 +697,55 @@ class radial_profile_analysis():
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                     ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
                 else:
-                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
                 for j in range(num_img):
                     sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
                     ax.flat[j].imshow(sum_map, cmap='gray')
                     for c, lvs in enumerate(lv_show):
                         lv = lvs-1
-                        print("Color map of loading vector %d = %s"%(lvs, self.cm_rep[c+1]))
-                        transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)
-                        transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
+                        if i == 0 and j == 0:
+                            print("Color map of loading vector %d = %s"%(lvs, self.cm_rep[c+1]))
+                        transparency = self.run_SI.coeffs_reshape[k][:, :, lv]/np.max(self.run_SI.coeffs_reshape[k][:, :, lv].flatten())
+                        transparency = np.nan_to_num(transparency)
+                        if transparency_percentile != 100:
+                            transparency[transparency>=np.percentile(self.run_SI.coeffs_reshape[k][:, :, lv].flatten(), transparency_percentile)] = 1.0
                         ax.flat[j].imshow(self.run_SI.coeffs_reshape[k][:, :, lv], 
                                           cmap=self.cm_rep[c+1], 
                                           alpha=transparency)
-                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    if visual_title:
+                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
                     k += 1
                 for a in ax.flat:
                     a.axis('off')
                 fig.suptitle(self.subfolders[i])
-                fig.tight_layout()
+                plt.subplots_adjust(hspace=0.1, wspace=0.1)
+                if visual_title:
+                    fig.tight_layout()
                 plt.show()            
 
     
-    def NMF_comparison(self, str_name=None, percentile_threshold=90, ref_variance=0.7):
+    def NMF_comparison(self, str_name=None, percentile_threshold=90, ref_variance=0.7, 
+                       visual_title=True, title_font_size=10, axis_off=True, visual_individual=True):
         # Show the pixels with high coefficients for each loading vector and the averaged profiles for the mask region
         coeff_split = []
         thresh_coeff_split = []
         lv_mean_split = []
         lv_line = []
+        high_coeff_area_split = []
 
         for lv in range(self.num_comp):
             lv_tot = np.zeros(self.profile_length)
             total_num = 0
             coeff_lv = []
             thresh_coeff_lv = []
+            high_coeff_area_lv = []
             lv_mean_lv = []
-            fig_lv, ax_lv = plt.subplots(1, 3, figsize=(12, 4))
+            fig_lv, ax_lv = plt.subplots(1, 3, figsize=(12, 4), dpi=300)
             ax_lv[0].plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
             ax_twin = ax_lv[0].twinx()
             if str_name != None and str_name != []:
@@ -704,19 +760,20 @@ class radial_profile_analysis():
 
             k=0
             for i in range(len(self.subfolders)):
-                fig_sub_tot, ax_sub_tot = plt.subplots(1, 1, figsize=(8, 6))
                 lv_sub = np.zeros(self.profile_length)
                 sub_num = 0
                 coeff = []
                 thresh_coeff = []
+                high_coeff_area = []
                 lv_mean = []
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
-                
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
-                else:
-                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                fig_sub_tot, ax_sub_tot = plt.subplots(1, 1, figsize=(8, 6), dpi=300)
+                if visual_individual:
+                    if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                        fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
+                    else:
+                        fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
                     
                 for j in range(num_img):
                     coeff.append(self.run_SI.coeffs_reshape[k][:, :, lv])
@@ -724,10 +781,14 @@ class radial_profile_analysis():
                     coeff_map[coeff_map<=thresh] = 0
                     coeff_map[coeff_map>thresh] = 1
                     thresh_coeff.append(coeff_map)
+                    area = self.radial_var_split[i][j].axes_manager[0].scale**2 * np.sum(coeff_map)
+                    high_coeff_area.append(area)
 
-                    ax.flat[j*2].imshow(coeff_map, cmap='gray')
-                    ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                    ax.flat[j*2].axis("off")
+                    if visual_individual:
+                        ax.flat[j*2].imshow(coeff_map, cmap='gray')
+                        if visual_title:
+                            ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
+                        ax.flat[j*2].axis("off")
                     if len(np.where(coeff_map==1)[0]) != 0:
                         tmp_num = len(np.where(coeff_map==1)[0])
                         sub_num += tmp_num
@@ -742,17 +803,21 @@ class radial_profile_analysis():
                         lv_sub += coeff_rv
 
                         lv_mean.append(coeff_mean)
-
-                        ax.flat[j*2+1].plot(self.x_axis, coeff_mean[self.range_ind[0]:self.range_ind[1]], 'k-')
-                        #ax.flat[j*2+1].set_ylim(0.0, ref_variance*1.5)
-                        #ax.flat[j*2+1].hlines(y=ref_variance, xmin=self.x_axis.min(), xmax=self.x_axis.max(), color="k", linestyle=":", alpha=0.5)
-                        #ax.flat[j*2+1].plot(self.x_axis, self.radial_var_sum_split[i][j][self.range_ind[0]:self.range_ind[1]], 'k:', alpha=0.5)
-                        ax_lv_contri = ax.flat[j*2+1].twinx()
-                        for lva in range(self.num_comp):
-                            mean_coeff = np.mean(self.run_SI.coeffs_reshape[k][:, :, lva][np.where(coeff_map==1)])
-                            ax_lv_contri.plot(self.x_axis, self.run_SI.DR_comp_vectors[lva]*mean_coeff, self.color_rep[lva+1], alpha=0.7)
-                        ax.flat[j*2+1].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                        ax.flat[j*2+1].set_facecolor("lightgray")
+                        
+                        if visual_individual:
+                            ax.flat[j*2+1].plot(self.x_axis, coeff_mean[self.range_ind[0]:self.range_ind[1]], 'k-')
+                            if axis_off:
+                                ax.flat[j*2+1].tick_params(axis="y", labelsize=0, color='white')
+                            #ax.flat[j*2+1].set_ylim(0.0, ref_variance*1.5)
+                            #ax.flat[j*2+1].hlines(y=ref_variance, xmin=self.x_axis.min(), xmax=self.x_axis.max(), color="k", linestyle=":", alpha=0.5)
+                            #ax.flat[j*2+1].plot(self.x_axis, self.radial_var_sum_split[i][j][self.range_ind[0]:self.range_ind[1]], 'k:', alpha=0.5)
+                            ax_lv_contri = ax.flat[j*2+1].twinx()
+                            for lva in range(self.num_comp):
+                                mean_coeff = np.mean(self.run_SI.coeffs_reshape[k][:, :, lva][np.where(coeff_map==1)])
+                                ax_lv_contri.plot(self.x_axis, self.run_SI.DR_comp_vectors[lva]*mean_coeff, self.color_rep[lva+1], alpha=0.7)
+                            if visual_title:
+                                ax.flat[j*2+1].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
+                            ax.flat[j*2+1].set_facecolor("lightgray")
                     else:
                         lv_mean.append(np.zeros(self.profile_length))
                         
@@ -769,16 +834,20 @@ class radial_profile_analysis():
                     ax_sub_twin.legend(loc="right")
                 fig_sub_tot.tight_layout()
 
-                ax_lv[2].plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[i], label=self.subfolders[i])
+                ax_lv[2].plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[i+1], label=self.subfolders[i])
                 
-                fig.suptitle(self.subfolders[i]+' threshold coefficient map for loading vector %d'%(lv+1))
-                fig.tight_layout()
+                if visual_individual:
+                    fig.suptitle(self.subfolders[i]+' threshold coefficient map for loading vector %d'%(lv+1))
+                    fig.tight_layout()
+                    
                 coeff_lv.append(coeff)
                 thresh_coeff_lv.append(thresh_coeff)
+                high_coeff_area_lv.append(high_coeff_area)
                 lv_mean_lv.append(lv_mean)
                 
             coeff_split.append(coeff_lv)
             thresh_coeff_split.append(thresh_coeff_lv)
+            high_coeff_area_split.append(high_coeff_area_lv)
             lv_mean_split.append(lv_mean_lv)
             
             if total_num != 0:
@@ -789,7 +858,7 @@ class radial_profile_analysis():
             ax_lv[2].legend()
             fig_lv.tight_layout()
 
-        fig_tot, ax_tot = plt.subplots(1, 1, figsize=(6, 4))
+        fig_tot, ax_tot = plt.subplots(1, 1, figsize=(6, 4), dpi=300)
         for l, line in enumerate(lv_line):
             ax_tot.plot(self.x_axis, line[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[l+1], label='lv %d'%(l+1))
         ax_tot.legend()
@@ -799,6 +868,7 @@ class radial_profile_analysis():
             
         self.coeff_split = coeff_split
         self.thresh_coeff_split = thresh_coeff_split
+        self.high_coeff_area_split = high_coeff_area_split
         self.lv_mean_split = lv_mean_split
 
         return lv_line
@@ -826,7 +896,7 @@ class radial_profile_analysis():
                 data_name = data_name[0]+'_'+data_name[1]
                 print("save prefix: ", data_name)
                 top, bottom, left, right = self.crop
-                fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+                fig, ax = plt.subplots(1, 3, figsize=(15, 5), dpi=300)
                 ax[0].imshow(self.BF_disc_align[i][j][top:bottom, left:right], cmap='inferno')
                 ax[0].set_title("Aligned BF disc")
                 ax[0].axis("off")
@@ -869,9 +939,9 @@ class radial_profile_analysis():
 
                 for lv in range(self.num_comp):
                     if also_dp:
-                        fig_lv, ax_lv = plt.subplots(3, 2, figsize=(14, 21))
+                        fig_lv, ax_lv = plt.subplots(3, 2, figsize=(14, 21), dpi=300)
                     else:
-                        fig_lv, ax_lv = plt.subplots(2, 2, figsize=(14, 14))
+                        fig_lv, ax_lv = plt.subplots(2, 2, figsize=(14, 14), dpi=300)
                     ax_lv[0, 0].plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
                     ax_lv[0, 0].set_title("Loading vector %d"%(lv+1))
                     peaks = find_peaks(self.run_SI.DR_comp_vectors[lv], prominence=prominence_lv)[0]
@@ -924,52 +994,500 @@ class radial_profile_analysis():
                             tifffile.imwrite(save_path+'/'+data_name+"_%d_lv_coeff_threshold_map.tif"%(lv+1), th_map.data)
                     
                     if also_dp and len(np.nonzero(self.thresh_coeff_split[lv][i][j])[0]) != 0:
-                        mean_dp = np.mean(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
+                        mean_dp = np.sum(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
+                        if save:
+                            mean_dp_save = hs.signals.Signal2D(mean_dp)
+                            mean_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            mean_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            mean_dp_save.save(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                            if also_tiff:
+                                tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), mean_dp_save.data)
+                                
                         if log_scale_dp:
                             mean_dp[mean_dp <= 0] = 1.0
-                            ax_lv[2, 0].imshow(np.log(mean_dp), cmap='gray')
+                            ax_lv[2, 0].imshow(np.log(mean_dp).clip(min=0.0), cmap='gray')
                             ax_lv[2, 0].set_title('(log-scale) Mean diffraction pattern\nfor the high-variance map')
                             ax_lv[2, 0].axis("off")
                         else:
-                            ax_lv[2, 0].imshow(mean_dp, cmap='gray')
+                            ax_lv[2, 0].imshow(mean_dp.clip(min=0.0), cmap='gray')
                             ax_lv[2, 0].set_title('Mean diffraction pattern\nfor the high-variance map')
                             ax_lv[2, 0].axis("off")
                             
-                        if save:
-                            mean_dp = hs.signals.Signal2D(mean_dp)
-                            mean_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                            mean_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                            mean_dp.save(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
-                            if also_tiff:
-                                tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), mean_dp.data)
-            
                         max_dp = np.max(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
+                        if save:
+                            max_dp_save = hs.signals.Signal2D(max_dp)
+                            max_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            max_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            max_dp_save.save(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                            if also_tiff:
+                                tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), max_dp_save.data)
+                                
                         if log_scale_dp:
                             max_dp[max_dp <= 0] = 1.0
-                            ax_lv[2, 1].imshow(np.log(max_dp), cmap='gray')
+                            ax_lv[2, 1].imshow(np.log(max_dp).clip(min=0.0), cmap='gray')
                             ax_lv[2, 1].set_title('(log-scale) Maximum diffraction pattern\nfor the thresholding map')
                             ax_lv[2, 1].axis("off")
                         else:
-                            ax_lv[2, 1].imshow(max_dp, cmap='gray')
+                            ax_lv[2, 1].imshow(max_dp.clip(min=0.0), cmap='gray')
                             ax_lv[2, 1].set_title('Maximum diffraction pattern\nfor the high-variance map')
                             ax_lv[2, 1].axis("off")
-                            
-                        if save:
-                            max_dp = hs.signals.Signal2D(max_dp)
-                            max_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                            max_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                            max_dp.save(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
-                            if also_tiff:
-                                tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), max_dp.data)
-                    
+
                     fig_lv.tight_layout()
                     plt.show()
                     fig_lv.savefig(save_path+'/'+data_name+"_NMF_%d_lv_summary.png"%(lv+1))
                     
                 if also_dp:
                     del dataset # release the occupied memory
+                    
+    def NMF_summary_save_specific(self, save=False, also_dp=False, log_scale_dp=True, also_tiff=False, fill_width=0.01, prominence_lv=0.001, prominence_profile=0.001, specific_data=[]):
+        for i in range(len(self.subfolders)):
+            num_img = len(self.radial_var_split[i])
+            max_dps = []
+            mean_dps = []
+            for j in range(num_img):
+                for key in specific_data:
+                    if key in self.loaded_data_path[i][j]:
+                        if also_dp:
+                            if self.new_process_flag:
+                                dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                            else:      
+                                cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
+                                dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
+                                dataset = py4DSTEM.DataCube(dataset.data)
+                                #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
+                                dataset.calibration = cali.calibration
+                                dataset.calibrate()                    
+
+                        save_path = os.path.dirname(self.loaded_data_path[i][j]) # able to change the base directory for saving
+                        print("save directory: ", save_path)
+                        data_name = os.path.basename(self.loaded_data_path[i][j]).split("_")
+                        data_name = data_name[0]+'_'+data_name[1]
+                        print("save prefix: ", data_name)
+                        top, bottom, left, right = self.crop
+                        fig, ax = plt.subplots(1, 3, figsize=(15, 5), dpi=300)
+                        ax[0].imshow(self.BF_disc_align[i][j][top:bottom, left:right], cmap='inferno')
+                        ax[0].set_title("Aligned BF disc")
+                        ax[0].axis("off")
+
+                        sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
+                        ax[1].imshow(sum_map, cmap='inferno')
+                        ax[1].set_title("Intensity map")
+                        ax[1].axis("off")                 
+
+                        rv = self.radial_var_sum_split[i][j]
+                        ax[2].plot(self.x_axis, rv[self.range_ind[0]:self.range_ind[1]], 'k-', label="var_sum")
+                        ax[2].set_title("Sum of radial variance/mean profiles")
+                        ax[2].legend(loc='upper right')
+
+                        ra = self.radial_avg_sum_split[i][j]
+                        ax_twin = ax[2].twinx()
+                        ax_twin.plot(self.x_axis, ra[self.range_ind[0]:self.range_ind[1]], 'r:', label="mean_sum")
+                        ax_twin.legend(loc='right')
+
+                        fig.suptitle(self.subfolders[i]+" - "+os.path.basename(self.loaded_data_path[i][j])[:15])
+                        fig.tight_layout()
+                        plt.show()
+                        fig.savefig(save_path+'/'+data_name+"_summary.png")
+
+                        if save:
+                            sum_map = hs.signals.Signal2D(sum_map)
+                            sum_map.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[0].scale
+                            sum_map.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[1].scale
+                            sum_map.save(save_path+'/'+data_name+"_intensity_map.hspy", overwrite=True)
+                            rv = hs.signals.Signal1D(rv)
+                            rv.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            rv.save(save_path+'/'+data_name+"_mean_radial_variance_profile.hspy", overwrite=True)
+                            ra = hs.signals.Signal1D(ra)
+                            ra.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            ra.save(save_path+'/'+data_name+"_mean_radial_mean_profile.hspy", overwrite=True)
+                            if also_tiff:
+                                tifffile.imwrite(save_path+'/'+data_name+"_intensity_map.tif", sum_map.data)
+                                tifffile.imwrite(save_path+'/'+data_name+"_mean_radial_variance_profile.tif", rv.data)
+                                tifffile.imwrite(save_path+'/'+data_name+"_mean_radial_mean_profile.tif", ra.data)
+
+                        for lv in range(self.num_comp):
+                            if also_dp:
+                                fig_lv, ax_lv = plt.subplots(3, 2, figsize=(14, 21), dpi=300)
+                            else:
+                                fig_lv, ax_lv = plt.subplots(2, 2, figsize=(14, 14), dpi=300)
+                            ax_lv[0, 0].plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
+                            ax_lv[0, 0].set_title("Loading vector %d"%(lv+1))
+                            peaks = find_peaks(self.run_SI.DR_comp_vectors[lv], prominence=prominence_lv)[0]
+
+                            peaks = peaks * self.pixel_size_inv_Ang
+                            peaks = peaks + self.from_
+                            print("Peak positions of loading vector %d"%(lv+1))
+                            for ip, peak in enumerate(peaks):
+                                if peak >= self.from_ and peak <= self.to_:
+                                    print(peak)
+                                    ax_lv[0, 0].axvline(peak, ls=':', lw=1.5, c='r')
+                                    ax_lv[0, 0].fill_between([peak-fill_width, peak+fill_width], y1=np.max(self.run_SI.DR_comp_vectors[lv]), y2=np.min(self.run_SI.DR_comp_vectors[lv]), alpha=0.5, color='orange')
+                                    ax_lv[0, 0].text(peak, np.max(self.run_SI.DR_comp_vectors[lv]), "%.3f"%(peak))
+
+                            ax_lv[0, 1].plot(self.x_axis, self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]], 'k-')
+                            ax_lv[0, 1].set_title("Mean profile for the lv %d coeff threshold map"%(lv+1))
+                            peaks = find_peaks(self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]], prominence=prominence_profile)[0]
+
+                            peaks = peaks * self.pixel_size_inv_Ang
+                            peaks = peaks + self.from_
+                            print("Peak positions of the mean profile")
+                            for ip, peak in enumerate(peaks):
+                                if peak >= self.from_ and peak <= self.to_:
+                                    print(peak)
+                                    ax_lv[0, 1].axvline(peak, ls=':', lw=1.5, c='r')
+                                    ax_lv[0, 1].fill_between([peak-fill_width, peak+fill_width], 
+                                                          y1=np.max(self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]]), 
+                                                          y2=np.min(self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]]), 
+                                                          alpha=0.5, color='orange')
+                                    ax_lv[0, 1].text(peak, np.max(self.lv_mean_split[lv][i][j][self.range_ind[0]:self.range_ind[1]]), "%.3f"%(peak))
+
+                            ax_lv[1, 0].imshow(self.coeff_split[lv][i][j], cmap='gray')
+                            ax_lv[1, 0].set_title("lv %d coefficient map"%(lv+1))
+                            ax_lv[1, 0].axis("off")
+                            ax_lv[1, 1].imshow(self.thresh_coeff_split[lv][i][j], cmap='gray')
+                            ax_lv[1, 1].set_title("lv %d threshold map"%(lv+1))
+                            ax_lv[1, 1].axis("off")
+
+                            if save:
+                                coeff_map = hs.signals.Signal2D(self.coeff_split[lv][i][j])
+                                coeff_map.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[0].scale
+                                coeff_map.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[1].scale
+                                coeff_map.save(save_path+'/'+data_name+"_%d_lv_coeff_map.hspy"%(lv+1), overwrite=True)
+                                th_map = hs.signals.Signal2D(self.thresh_coeff_split[lv][i][j])
+                                th_map.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[0].scale
+                                th_map.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[1].scale
+                                th_map.save(save_path+'/'+data_name+"_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                                if also_tiff:
+                                    tifffile.imwrite(save_path+'/'+data_name+"_%d_lv_coeff_map.tif"%(lv+1), coeff_map.data)
+                                    tifffile.imwrite(save_path+'/'+data_name+"_%d_lv_coeff_threshold_map.tif"%(lv+1), th_map.data)
+
+                            if also_dp and len(np.nonzero(self.thresh_coeff_split[lv][i][j])[0]) != 0:
+                                mean_dp = np.sum(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
+                                if save:
+                                    mean_dp_save = hs.signals.Signal2D(mean_dp)
+                                    mean_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                                    mean_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                                    mean_dp_save.save(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                                    if also_tiff:
+                                        tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), mean_dp_save.data)
+
+                                if log_scale_dp:
+                                    mean_dp[mean_dp <= 0] = 1.0
+                                    ax_lv[2, 0].imshow(np.log(mean_dp).clip(min=0.0), cmap='gray')
+                                    ax_lv[2, 0].set_title('(log-scale) Mean diffraction pattern\nfor the high-variance map')
+                                    ax_lv[2, 0].axis("off")
+                                else:
+                                    ax_lv[2, 0].imshow(mean_dp.clip(min=0.0), cmap='gray')
+                                    ax_lv[2, 0].set_title('Mean diffraction pattern\nfor the high-variance map')
+                                    ax_lv[2, 0].axis("off")
+
+                                max_dp = np.max(dataset.data[np.where(self.thresh_coeff_split[lv][i][j]==1)], axis=0)
+                                if save:
+                                    max_dp_save = hs.signals.Signal2D(max_dp)
+                                    max_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                                    max_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                                    max_dp_save.save(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.hspy"%(lv+1), overwrite=True)
+                                    if also_tiff:
+                                        tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_coeff_threshold_map.tif"%(lv+1), max_dp_save.data)
+
+                                if log_scale_dp:
+                                    max_dp[max_dp <= 0] = 1.0
+                                    ax_lv[2, 1].imshow(np.log(max_dp).clip(min=0.0), cmap='gray')
+                                    ax_lv[2, 1].set_title('(log-scale) Maximum diffraction pattern\nfor the thresholding map')
+                                    ax_lv[2, 1].axis("off")
+                                else:
+                                    ax_lv[2, 1].imshow(max_dp.clip(min=0.0), cmap='gray')
+                                    ax_lv[2, 1].set_title('Maximum diffraction pattern\nfor the high-variance map')
+                                    ax_lv[2, 1].axis("off")
+
+                            fig_lv.tight_layout()
+                            plt.show()
+                            fig_lv.savefig(save_path+'/'+data_name+"_NMF_%d_lv_summary.png"%(lv+1))
+
+                        if also_dp:
+                            del dataset # release the occupied memory        
+
+                                                
+    def effective_small_area(self, data_key, threshold_map="NMF", eps=1.5, min_sample=16, visual_result=True):
+        self.threshold_map_small = threshold_map
+        if self.threshold_map_small == "NMF":
+            for i in range(len(self.subfolders)):
+                num_img = len(self.radial_var_split[i])
+                for j in range(num_img):
+                    if data_key in self.loaded_data_path[i][j]:
+                        self.selected_data_path = self.loaded_data_path[i][j]
+                        self.sub_ind = i
+                        self.img_ind = j
+            clustered_lv = []                
+            for lv in range(self.num_comp):
+                db = DBSCAN(eps=eps, min_samples=min_sample)
+                binary_map = self.thresh_coeff_split[lv][self.sub_ind][self.img_ind]
+                sel_coor = np.nonzero(binary_map)
+                X = np.stack((sel_coor[0], sel_coor[1]), axis=1)
+                db.fit(X)
+                label = db.labels_
+                clustered = np.zeros_like(binary_map)
+                clustered[X[:, 0], X[:, 1]] = label+1
+                clustered_lv.append(clustered)
+
+                if visual_result:
+                    fig, ax = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
+                    ax[0].imshow(binary_map, cmap='gray')
+                    ax[1].imshow(clustered, cmap='tab20')
+                    fig.suptitle(self.subfolders[i]+'\nLoading vector %d\n'%(lv+1)+os.path.basename(self.loaded_data_path[i][j])[:15]+"\nBefore and After clustering")
+                    plt.show()
+            
+            self.clustered_lv = clustered_lv
+            
+        if self.threshold_map_small == "variance":
+            for i in range(len(self.subfolders)):
+                num_img = len(self.radial_var_split[i])
+                for j in range(num_img):
+                    if data_key in self.loaded_data_path[i][j]:
+                        self.selected_data_path = self.loaded_data_path[i][j]
+                        self.sub_ind = i
+                        self.img_ind = j            
+
+            db = DBSCAN(eps=e, min_samples=m)
+            binary_map = self.thresh_var_split[self.sub_ind][self.img_ind]
+            sel_coor = np.nonzero(binary_map)
+            X = np.stack((sel_coor[0], sel_coor[1]), axis=1)
+            db.fit(X)
+            label = db.labels_
+            clustered = np.zeros_like(binary_map)
+            clustered[X[:, 0], X[:, 1]] = label+1
+            clustered_sub.append(clustered)
+            
+            if visual_result:
+                fig, ax = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
+                ax[0].imshow(binary_map, cmap='gray')
+                ax[1].imshow(clustered, cmap='tab20')
+                fig.suptitle(self.subfolders[i]+'-'%(lv+1)+os.path.basename(self.loaded_data_path[i][j])[:15]+"\nBefore and After clustering")
+                fig.tight_layout()
+                plt.show()
+            
+            self.clustered = clustered
+        
+
+    def small_area_investigation(self, visual_cluster=True, visual_dp=False, log_dp=True, save=False, also_tiff=False, virtual_4D=False): 
+        if self.threshold_map_small == 'NMF':
+            if self.new_process_flag:
+                dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
+            else:      
+                cali = py4DSTEM.read(self.selected_data_path[:-13]+"braggdisks_cali.h5")
+                dataset = py4DSTEM.read(self.selected_data_path[:-13]+"prepared_data.h5")
+                dataset = py4DSTEM.DataCube(dataset.data)
+                #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
+                dataset.calibration = cali.calibration
+                dataset.calibrate()
+
+            save_path = os.path.dirname(self.selected_data_path) # able to change the base directory for saving
+            print("save directory: ", save_path)
+            data_name = os.path.basename(self.selected_data_path).split("_")
+            data_name = data_name[0]+'_'+data_name[1]
+            print("save prefix: ", data_name)
+
+            virtual_lv = []
+            centroid_lv = []
+            boundary_lv = []
+            for lv in range(self.num_comp):
+                centroid_label = []
+                boundary_label = []
+                virtual_label = []
+                label_cluster = self.clustered_lv[lv]
+                label_list = np.unique(label_cluster)
+                
+                if visual_cluster:
+                    fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=300)
+                    ax.imshow(label_cluster, cmap='tab20')
+
+                for l in label_list[1:]:
+                    sel_coor = np.where(label_cluster == l)
+                    xy = np.stack((sel_coor[0], sel_coor[1]), axis=1)
+
+                    obj = ConcaveHull(xy, 2)
+                    hull = obj.calculate() # boundary pixel positions
+
+                    com_x, com_y = np.mean(sel_coor[1]), np.mean(sel_coor[0])
+                    if visual_cluster:
+                        ax.scatter(com_x, com_y, s=15, c='k', marker='*')
+                        ax.plot(hull[:, 1], hull[:, 0], 'b-')
+                        ax.text(com_x, com_y, "%d"%(l))
+
+                    centroid_label.append([com_y, com_x])
+                    boundary_label.append(hull)
+                    
+                    mean_dp = np.sum(dataset.data[sel_coor], axis=0)
+                    max_dp = np.max(dataset.data[sel_coor], axis=0)
+                    if virtual_4D:
+                        virtual_label.append(mean_dp)    
+                        
+                    if visual_dp:
+                        fig_dp, ax_dp = plt.subplots(1, 2, figsize=(10, 5), dpi=300)
+                        if save:
+                            mean_dp = hs.signals.Signal2D(mean_dp)
+                            mean_dp.axes_manager[0].scale = self.radial_var_split[self.sub_ind][self.img_ind].axes_manager[-1].scale
+                            mean_dp.axes_manager[1].scale = self.radial_var_split[self.sub_ind][self.img_ind].axes_manager[-1].scale
+                            mean_dp.save(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_%02d_cluster.hspy"%(lv+1, l), overwrite=True)
+                            if also_tiff:
+                                tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_%02d_lv_%02d_cluster.tif"%(lv+1, l), mean_dp.data)
+
+                            max_dp = hs.signals.Signal2D(max_dp)
+                            max_dp.axes_manager[0].scale = self.radial_var_split[self.sub_ind][self.img_ind].axes_manager[-1].scale
+                            max_dp.axes_manager[1].scale = self.radial_var_split[self.sub_ind][self.img_ind].axes_manager[-1].scale
+                            max_dp.save(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_%02d_cluster.hspy"%(lv+1, l), overwrite=True)
+                            if also_tiff:
+                                tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_%02d_lv_%02d_cluster.tif"%(lv+1, l), max_dp.data)
+
+                        if log_dp:
+                            mean_dp[np.where(mean_dp<=0)] = 1.0
+                            max_dp[np.where(max_dp<=0)] = 1.0
+                            ax_dp[0].imshow(np.log(mean_dp).clip(min=0), cmap='gray')
+                            ax_dp[1].imshow(np.log(max_dp).clip(min=0), cmap='gray')
+                        else:
+                            ax_dp[0].imshow(mean_dp.clip(min=0), cmap='gray')
+                            ax_dp[1].imshow(max_dp.clip(min=0), cmap='gray')    
+                        fig_dp.suptitle(self.subfolders[self.sub_ind]+" - "+os.path.basename(self.selected_data_path)[:15]+'\n%02d lv %02d cluster'%(lv+1, l))
+
+                plt.show()
+                centroid_lv.append(centroid_label)
+                boundary_lv.append(boundary_label)
+                virtual_lv.append(virtual_label)
+
+            self.centroid_lv = centroid_lv
+            self.boundary_lv = boundary_lv
+            
+            if virtual_4D:
+                self.virtual_lv = virtual_lv
+            
+
+        if self.threshold_map_small == 'variance':
+            if self.new_process_flag:
+                dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
+            else:      
+                cali = py4DSTEM.read(self.selected_data_path[:-13]+"braggdisks_cali.h5")
+                dataset = py4DSTEM.read(self.selected_data_path[:-13]+"prepared_data.h5")
+                dataset = py4DSTEM.DataCube(dataset.data)
+                #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
+                dataset.calibration = cali.calibration
+                dataset.calibrate()
+
+            save_path = os.path.dirname(self.selected_data_path) # able to change the base directory for saving
+            print("save directory: ", save_path)
+            data_name = os.path.basename(self.selected_data_path).split("_")
+            data_name = data_name[0]+'_'+data_name[1]
+            print("save prefix: ", data_name)
+
+            label_cluster = self.clustered
+            label_list = np.unique(label_cluster)
+            print(label_list)
+
+            fig, ax = plt.subplots(1, 1, figsize=(6, 6), dpi=300)
+            ax.imshow(label_cluster, cmap='tab20')
+
+            centroid_label = []
+            boundary_label = []
+            virtual_label = []
+            for l in label_list[1:]:
+                sel_coor = np.where(label_cluster == l)
+                xy = np.stack((sel_coor[0], sel_coor[1]), axis=1)
+
+                obj = ConcaveHull(xy, 2)
+                hull = obj.calculate() # boundary pixel positions
+
+                com_x, com_y = np.mean(sel_coor[1]), np.mean(sel_coor[0])
+                ax.scatter(com_x, com_y, s=15, c='k', marker='*')
+                ax.plot(hull[:, 1], hull[:, 0], 'b-')
+                ax.text(com_x, com_y, "%d"%(l))
+
+                centroid_label.append([com_y, com_x])
+                boundary_label.append(hull)
+
+                mean_dp = np.sum(dataset.data[sel_coor], axis=0)
+                max_dp = np.max(dataset.data[sel_coor], axis=0)                
+                
+                if virtual_4D:
+                    virtual_label.append(mean_dp)
+                    
+                if visual_dp:
+                    fig_dp, ax_dp = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
+                    if save:
+                        mean_dp = hs.signals.Signal2D(mean_dp)
+                        mean_dp.axes_manager[0].scale = self.radial_var_split[self.sub_ind][self.img_ind].axes_manager[-1].scale
+                        mean_dp.axes_manager[1].scale = self.radial_var_split[self.sub_ind][self.img_ind].axes_manager[-1].scale
+                        mean_dp.save(save_path+'/'+data_name+"_mean_diffraction_pattern_%d_lv_%02d_cluster.hspy"%(lv+1, l), overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_%02d_lv_%02d_cluster.tif"%(lv+1, l), mean_dp.data)
+
+                        max_dp = hs.signals.Signal2D(max_dp)
+                        max_dp.axes_manager[0].scale = self.radial_var_split[self.sub_ind][self.img_ind].axes_manager[-1].scale
+                        max_dp.axes_manager[1].scale = self.radial_var_split[self.sub_ind][self.img_ind].axes_manager[-1].scale
+                        max_dp.save(save_path+'/'+data_name+"_max_diffraction_pattern_%d_lv_%02d_cluster.hspy"%(lv+1, l), overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_%02d_lv_%02d_cluster.tif"%(lv+1, l), max_dp.data)
+
+                    if log_dp:
+                        mean_dp[np.where(mean_dp<=0)] = 1.0
+                        max_dp[np.where(max_dp<=0)] = 1.0
+                        ax_dp[0].imshow(np.log(mean_dp).clip(min=0), cmap='gray')
+                        ax_dp[1].imshow(np.log(max_dp).clip(min=0), cmap='gray')
+                    else:
+                        ax_dp[0].imshow(mean_dp.clip(min=0), cmap='gray')
+                        ax_dp[1].imshow(max_dp.clip(min=0), cmap='gray')                    
+                    fig_dp.suptitle(self.subfolders[self.sub_ind]+" - "+os.path.basename(self.selected_data_path)[:15]+'\n%02d lv %02d cluster'%(lv+1, l))
+
+            plt.show()
+            self.centroid_label = centroid_label
+            self.boundary_label = boundary_label
+            if virtual_4D:
+                self.virtual_label = virtual_label
 
 
+    def overlap_check(self, visual_lv=False):
+        if self.threshold_map_small == 'NMF':
+            fig_tot, ax_tot = plt.subplots(1, 1, figsize=(6, 6), dpi=300)
+            for lv in range(self.num_comp):
+                label_cluster = self.clustered_lv[lv]
+                label_list = np.unique(label_cluster).astype(int)
+                if visual_lv:
+                    fig, ax = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
+                    ax[0].imshow(label_cluster, cmap='tab20')
+                for l in range(0, len(label_list)-1, 1):
+                    ax_tot.fill(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 
+                               facecolor=self.color_rep[lv+1], 
+                               edgecolor=self.color_rep[lv+1], linewidth=3, alpha=0.5)
+                    
+                    if visual_lv:
+                        ax[0].scatter(self.centroid_lv[lv][l][1], self.centroid_lv[lv][l][0], s=15, c='k', marker='*')
+                        ax[0].text(self.centroid_lv[lv][l][1], self.centroid_lv[lv][l][0], "%d"%(l+1))
+                        ax[0].plot(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 'b-')
+                        ax[0].axis("off")
+
+                        ax[1].imshow(np.zeros_like(label_cluster), alpha=0.0)
+                        ax[1].fill(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 
+                                   facecolor=self.color_rep[lv+1], 
+                                   edgecolor=self.color_rep[lv+1], linewidth=3, alpha=0.5)
+                        ax[1].set_xticks([])
+                        ax[1].set_yticks([])
+                        ax[1].set_xticklabels([])
+                        ax[1].set_yticklabels([])
+                        ax[1].set_facecolor('lightgray')
+
+                if visual_lv:
+                    fig.tight_layout()
+            
+            ax_tot.set_xticks([])
+            ax_tot.set_yticks([])
+            ax_tot.set_xticklabels([])
+            ax_tot.set_yticklabels([])
+            ax_tot.set_facecolor("lightgray")
+            fig_tot.tight_layout()
+            plt.show()
+            
+        else:
+            return
+                
+            
     def scattering_range_of_interest(self, profile_type="variance", str_name=None, fill_width=0.1, height=None, width=None, threshold=None, distance=None, prominence=0.001):
 
         if width != None:
@@ -992,7 +1510,7 @@ class radial_profile_analysis():
 
         peak_sub = {}
         for i, sp in enumerate(total_sum_split):
-            fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+            fig, ax = plt.subplots(1, 1, figsize=(8, 6), dpi=300)
             tmp_sp = sp[self.range_ind[0]:self.range_ind[1]]
             if np.max(tmp_sp) != 0:
                 tmp_sp /= np.max(tmp_sp)
@@ -1031,7 +1549,7 @@ class radial_profile_analysis():
         self.peak_sub = peak_sub
 
     
-    def variance_map(self, sv_range=None, peaks=None, fill_width=0.1):
+    def variance_map(self, sv_range=None, peaks=None, fill_width=0.1, visual_title=True):
 
         if peaks != None:
             for i, peak in enumerate(peaks):
@@ -1042,28 +1560,31 @@ class radial_profile_analysis():
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
                     if num_img == 1:
-                        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                        fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                         ax = np.array([ax])
                     elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                        fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
                     else:
-                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                        fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
                     for j in range(num_img):
                         var_map = np.sum(self.radial_var_split[i][j].isig[sv_range[0]:sv_range[1]].data, axis=2)
                         mean_var_map.append(np.mean(var_map))
                         std_var_map.append(np.std(var_map))
                         ax.flat[j].imshow(var_map, cmap='inferno')
-                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                        if visual_title:
+                            ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
                     for a in ax.flat:
                         a.axis('off')
                     fig.suptitle(self.subfolders[i]+' - scattering vector range %.3f-%.3f (1/Å)'%(sv_range[0], sv_range[1]))
-                    fig.tight_layout()
+                    plt.subplots_adjust(hspace=0.1, wspace=0.1)
+                    if visual_title:
+                        fig.tight_layout()
                     plt.show()
                 
         
                 # to specify the absolute threshold value to make the binary variance map
                 total_num = 0
-                fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+                fig, ax = plt.subplots(1, 1, figsize=(10, 6), dpi=300)
                 for i in range(0, len(self.subfolders)):
                     num_img = len(self.radial_var_split[i])
                     if i == 0:
@@ -1091,28 +1612,31 @@ class radial_profile_analysis():
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                     ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
                 else:
-                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
                 for j in range(num_img):
                     var_map = np.sum(self.radial_var_split[i][j].isig[self.sv_range[0]:self.sv_range[1]].data, axis=2)
                     mean_var_map.append(np.mean(var_map))
                     std_var_map.append(np.std(var_map))
                     ax.flat[j].imshow(var_map, cmap='inferno')
-                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    if visual_title:
+                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
                 for a in ax.flat:
                     a.axis('off')
                 fig.suptitle(self.subfolders[i]+' - scattering vector range %.3f-%.3f (1/Å)'%(self.sv_range[0], self.sv_range[1]))
-                fig.tight_layout()
+                plt.subplots_adjust(hspace=0.1, wspace=0.1)
+                if visual_title:
+                    fig.tight_layout()
                 plt.show()
             
     
             # to specify the absolute threshold value to make the binary variance map
             total_num = 0
-            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+            fig, ax = plt.subplots(1, 1, figsize=(10, 6), dpi=300)
             for i in range(0, len(self.subfolders)):
                 num_img = len(self.radial_var_split[i])
                 if i == 0:
@@ -1137,12 +1661,12 @@ class radial_profile_analysis():
             return
  
 
-    def high_variance_map(self, abs_threshold=None, peaks=None, fill_width=0.1, percentile_threshold=90):
+    def high_variance_map(self, abs_threshold=None, peaks=None, fill_width=0.1, percentile_threshold=90, visual_title=True):
         # binary variance map (leave only large variances for the range specified above)
         # abosulte variance map threshold (pixel value > abs_threshold will be 1, otherwise it will be 0)
         if peaks != None:
             for p, peak in enumerate(peaks):
-                fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6))
+                fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6), dpi=300)
                 sp_tot = np.zeros(self.profile_length)
                 total_num = 0
                 sv_range = [peak-fill_width, peak+fill_width]
@@ -1153,19 +1677,20 @@ class radial_profile_analysis():
                     num_img = len(self.radial_var_split[i])
                     grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                     ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
                 else:
-                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
                     for j in range(num_img):
                         var_map = np.sum(self.radial_var_split[i][j].isig[sv_range[0]:sv_range[1]].data, axis=2)
                         abs_threshold = np.percentile(var_map, percentile_threshold)
                         var_map[var_map<=abs_threshold] = 0
                         var_map[var_map>abs_threshold] = 1
                         ax.flat[j].imshow(var_map, cmap='gray')
-                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15]+"_threshold value=%f"%abs_threshold)
+                        if visual_title:
+                            ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15]+"_threshold value=%f"%abs_threshold)
 
                         tmp_num = len(np.where(var_map==1)[0])
                         total_num += tmp_num
@@ -1180,7 +1705,9 @@ class radial_profile_analysis():
                     for a in ax.flat:
                         a.axis('off')
                     fig.suptitle(self.subfolders[i]+' - scattering vector range %.3f-%.3f (1/Å)'%(sv_range[0], sv_range[1]))
-                    fig.tight_layout()
+                    plt.subplots_adjust(hspace=0.1, wspace=0.1)
+                    if visual_title:
+                        fig.tight_layout()
 
                 ax_tot[1].legend()
                 if total_num != 0:
@@ -1191,7 +1718,7 @@ class radial_profile_analysis():
 
         elif percentile_threshold != None:     
             thresh_var_split = []
-            fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6))
+            fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6), dpi=300)
             sp_tot = np.zeros(self.profile_length)
             total_num = 0
 
@@ -1212,19 +1739,20 @@ class radial_profile_analysis():
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                     ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
                 else:
-                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
                 for j in range(num_img):
                     var_map = np.sum(self.radial_var_split[i][j].isig[self.sv_range[0]:self.sv_range[1]].data, axis=2)
                     var_map[var_map<=self.abs_threshold] = 0
                     var_map[var_map>self.abs_threshold] = 1
                     thresh_var.append(var_map)
                     ax.flat[j].imshow(var_map, cmap='gray')
-                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    if visual_title:
+                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
 
                     tmp_num = len(np.where(var_map==1)[0])
                     total_num += tmp_num
@@ -1238,7 +1766,9 @@ class radial_profile_analysis():
                 for a in ax.flat:
                     a.axis('off')
                 fig.suptitle(self.subfolders[i]+' - scattering vector range %.3f-%.3f (1/Å)'%(self.sv_range[0], self.sv_range[1]))
-                fig.tight_layout()
+                plt.subplots_adjust(hspace=0.1, wspace=0.1)
+                if visual_title:
+                    fig.tight_layout()
                 thresh_var_split.append(thresh_var)
                 
             ax_tot[1].legend()
@@ -1254,7 +1784,7 @@ class radial_profile_analysis():
         elif abs_threshold != None:     
             thresh_var_split = []
             self.abs_threshold = abs_threshold
-            fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6))
+            fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6), dpi=300)
             sp_tot = np.zeros(self.profile_length)
             total_num = 0
             
@@ -1265,19 +1795,20 @@ class radial_profile_analysis():
                 num_img = len(self.radial_var_split[i])
                 grid_size = int(np.around(np.sqrt(num_img)))
                 if num_img == 1:
-                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                     ax = np.array([ax])
                 elif (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+                    fig, ax = plt.subplots(grid_size, grid_size, figsize=(12, 12), dpi=300)
                 else:
-                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10))
+                    fig, ax = plt.subplots(grid_size, grid_size+1, figsize=(12, 10), dpi=300)
                 for j in range(num_img):
                     var_map = np.sum(self.radial_var_split[i][j].isig[self.sv_range[0]:self.sv_range[1]].data, axis=2)
                     var_map[var_map<=self.abs_threshold] = 0
                     var_map[var_map>self.abs_threshold] = 1
                     thresh_var.append(var_map)
                     ax.flat[j].imshow(var_map, cmap='gray')
-                    ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
+                    if visual_title:
+                        ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
                     
                     tmp_num = len(np.where(var_map==1)[0])
                     total_num += tmp_num
@@ -1310,7 +1841,7 @@ class radial_profile_analysis():
             return
 
     
-    def Xcorrel(self, str_name=None, profile_type="mean"):
+    def Xcorrel(self, str_name=None, profile_type="mean", visual_title=True):
         xcor_val_split = []
         xcor_sh_split = []
 
@@ -1352,12 +1883,13 @@ class radial_profile_analysis():
             num_img = len(self.radial_var_split[i])
             grid_size = int(np.around(np.sqrt(num_img)))
             if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+                fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
             else:
-                fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
             for j in range(num_img):     
                 ax.flat[j*2].imshow(xcor_val_split[i][j], cmap='inferno')
-                ax.flat[j*2].set_title(self.loaded_data_path[i][j][-29:-14])
+                if visual_title:
+                    ax.flat[j*2].set_title(self.loaded_data_path[i][j][-29:-14])
                 ax.flat[j*2].axis("off")
         
                 ax.flat[j*2+1].hist(xcor_val_split[i][j].flatten(), bins=100)
@@ -1369,9 +1901,9 @@ class radial_profile_analysis():
             plt.show()
 
     
-    def high_Xcorr(self, value_threshold=5.0, shift_threshold=0.3):
+    def high_Xcorr(self, value_threshold=5.0, shift_threshold=0.3, visual_title=True):
         thresh_xcor_split = []
-        fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6))
+        fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6), dpi=300)
         sp_tot = np.zeros(self.profile_length)
         total_num = 0
         for i in range(len(self.subfolders)):
@@ -1382,9 +1914,9 @@ class radial_profile_analysis():
             sub_num = 0
             
             if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
+                fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
             else:
-                fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
             for j in range(num_img):
                 xcor_val_map = self.xcor_val_split[i][j].copy()
                 xcor_sh_map = self.xcor_sh_split[i][j].copy()
@@ -1398,7 +1930,8 @@ class radial_profile_analysis():
                 bool_mask = xcor_val_map * xcor_sh_map
                 thresh_xcor.append(bool_mask)
                 ax.flat[j*2].imshow(bool_mask, cmap='gray')
-                ax.flat[j*2].set_title(self.loaded_data_path[i][j][-29:-14])
+                if visual_title:
+                    ax.flat[j*2].set_title(self.loaded_data_path[i][j][-29:-14])
                 ax.flat[j*2].axis("off")
                 
                 if len(np.nonzero(bool_mask)[0]) != 0:
@@ -1439,9 +1972,10 @@ class radial_profile_analysis():
         self.thresh_xcor_split = thresh_xcor_split
         return sp_tot
 
-    def edx_classification(self, threshold_map="NMF"):
+    def edx_classification(self, threshold_map="NMF", visual_title=True, 
+                           title_font_size=10, axis_off=True, visual_individual=True):
         if threshold_map == "variance":
-            fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6))
+            fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6), dpi=300)
             sp_tot = np.zeros_like(self.edx_range)
             total_num = 0
             for i in range(len(self.subfolders)):
@@ -1449,17 +1983,20 @@ class radial_profile_analysis():
                 grid_size = int(np.around(np.sqrt(num_img)))
                 sub_num = 0
                 
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
-                else:
-                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                if visual_individual:
+                    if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                        fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
+                    else:
+                        fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
 
                 sp_sub = np.zeros_like(self.edx_range)
                 for j in range(num_img):
                     thresh_map = self.thresh_var_split[i][j]
-                    ax.flat[j*2].imshow(thresh_map, cmap='gray')
-                    ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                    ax.flat[j*2].axis("off")
+                    if visual_individual:
+                        ax.flat[j*2].imshow(thresh_map, cmap='gray')
+                        if visual_title:
+                            ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
+                        ax.flat[j*2].axis("off")
                     
                     tmp_num = len(np.where(thresh_map==1)[0])
                     total_num += tmp_num
@@ -1467,13 +2004,18 @@ class radial_profile_analysis():
                     edx_sum = np.sum(self.edx_split[i][j].data[np.where(thresh_map==1)], axis=0)
                     sp_tot += edx_sum
                     sp_sub += edx_sum
-                    ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], 'k-')
+                    if visual_individual:
+                        ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], 'k-')
+                        if axis_off:
+                            ax.flat[j*2+1].tick_params(axis="y", labelsize=0, color='white')
 
+                if visual_individual:
+                    fig.suptitle(self.subfolders[i]+' mean EDX spectrum for each high-variance map')
+                    fig.tight_layout()
+                
                 if sub_num != 0:
                     sp_sub /= sub_num
                 ax_tot[1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], c=self.color_rep[i], label=self.subfolders[i])
-                fig.suptitle(self.subfolders[i]+' mean EDX spectrum for each high-variance map')
-                fig.tight_layout()
                 
             if total_num != 0:
                 sp_tot /= total_num
@@ -1486,7 +2028,7 @@ class radial_profile_analysis():
             return sp_tot
 
         elif threshold_map == "cross-correlation":
-            fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6))
+            fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6), dpi=300)
             sp_tot = np.zeros_like(self.edx_range)
             total_num = 0
             for i in range(len(self.subfolders)):
@@ -1494,17 +2036,20 @@ class radial_profile_analysis():
                 grid_size = int(np.around(np.sqrt(num_img)))
                 sub_num = 0
                 
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
-                else:
-                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                if visual_individual:
+                    if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                        fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
+                    else:
+                        fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
 
                 sp_sub = np.zeros_like(self.edx_range)
                 for j in range(num_img):
                     thresh_map = self.thresh_xcor_split[i][j]
-                    ax.flat[j*2].imshow(thresh_map, cmap='gray')
-                    ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                    ax.flat[j*2].axis("off")
+                    if visual_individual:
+                        ax.flat[j*2].imshow(thresh_map, cmap='gray')
+                        if visual_title:
+                            ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
+                        ax.flat[j*2].axis("off")
                     
                     edx_sum = np.sum(self.edx_split[i][j].data[np.where(thresh_map==1)], axis=0)
                     tmp_num = len(np.where(thresh_map==1)[0])
@@ -1512,13 +2057,19 @@ class radial_profile_analysis():
                     sub_num += tmp_num
                     sp_tot += edx_sum
                     sp_sub += edx_sum
-                    ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], 'k-')
+                    
+                    if visual_individual:
+                        ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], 'k-')
+                        if axis_off:
+                            ax.flat[j*2+1].tick_params(axis="y", labelsize=0, color='white')
 
+                if visual_individual:        
+                    fig.suptitle(self.subfolders[i]+' mean EDX spectrum for each high-cross-correlation map')
+                    fig.tight_layout()
+                    
                 if sub_num != 0:
                     sp_sub /= sub_num
-                ax_tot[1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], c=self.color_rep[i], label=self.subfolders[i])
-                fig.suptitle(self.subfolders[i]+' mean EDX spectrum for each high-cross-correlation map')
-                fig.tight_layout()
+                ax_tot[1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], c=self.color_rep[i+1], label=self.subfolders[i])
 
             if total_num != 0:
                 sp_tot /= total_num
@@ -1533,7 +2084,7 @@ class radial_profile_analysis():
         elif threshold_map == "NMF":
             lv_tot = []
             for lv in range(self.num_comp):
-                fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6))
+                fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6), dpi=300)
                 sp_tot = np.zeros_like(self.edx_range)
                 total_num = 0
                 for i in range(len(self.subfolders)):
@@ -1541,17 +2092,21 @@ class radial_profile_analysis():
                     grid_size = int(np.around(np.sqrt(num_img)))
                     sub_num = 0
                     
-                    if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                        fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12))
-                    else:
-                        fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10))
+                    if visual_individual:
+                        if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                            fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
+                        else:
+                            fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
     
                     sp_sub = np.zeros_like(self.edx_range)
                     for j in range(num_img):
                         thresh_map = self.thresh_coeff_split[lv][i][j]
-                        ax.flat[j*2].imshow(thresh_map, cmap='gray')
-                        ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15])
-                        ax.flat[j*2].axis("off")
+                    
+                        if visual_individual:
+                            ax.flat[j*2].imshow(thresh_map, cmap='gray')
+                            if visual_title:
+                                ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
+                            ax.flat[j*2].axis("off")
                         
                         edx_sum = np.sum(self.edx_split[i][j].data[np.where(thresh_map==1)], axis=0)
                         tmp_num = len(np.where(thresh_map==1)[0])
@@ -1559,13 +2114,20 @@ class radial_profile_analysis():
                         sub_num += tmp_num
                         sp_tot += edx_sum
                         sp_sub += edx_sum
-                        ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], 'k-')
+                        
+                        if visual_individual:
+                            ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], 'k-')
+                            if axis_off:
+                                ax.flat[j*2+1].tick_params(axis="y", labelsize=0, color='white')
 
+                    if visual_individual:
+                        fig.suptitle(self.subfolders[i]+' mean EDX spectrum for each high-coefficient map for loading vector %d'%(lv+1))
+                        fig.tight_layout()                        
+                            
                     if sub_num != 0:
                         sp_sub /= sub_num
-                    ax_tot[1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], c=self.color_rep[i], label=self.subfolders[i])
-                    fig.suptitle(self.subfolders[i]+' mean EDX spectrum for each high-coefficient map for loading vector %d'%(lv+1))
-                    fig.tight_layout()
+                    ax_tot[1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], sp_sub[self.edx_offset_ind[0]:self.edx_offset_ind[1]], c=self.color_rep[i+1], label=self.subfolders[i])
+
                 if total_num != 0:
                     sp_tot /= total_num
                 lv_tot.append(sp_tot)
@@ -1574,7 +2136,7 @@ class radial_profile_analysis():
                 fig_tot.suptitle(self.subfolders[i]+' mean EDX spectrum for all high-coefficient maps for loading vector %d'%(lv+1))
                 fig_tot.tight_layout()
 
-            fig_lv, ax_lv = plt.subplots(1, 1, figsize=(12, 4))
+            fig_lv, ax_lv = plt.subplots(1, 1, figsize=(12, 4), dpi=300)
             for l, line in enumerate(lv_tot):
                 ax_lv.plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], 
                            line[self.edx_offset_ind[0]:self.edx_offset_ind[1]], c=self.color_rep[l+1], label='lv %d'%(l+1))
@@ -1596,13 +2158,187 @@ class radial_profile_analysis():
             max_dps = []
             mean_dps = []
             for j in range(num_img):
+                for key in specific_data:
+                    if key in self.loaded_data_path[i][j]:
+                        save_path = os.path.dirname(self.loaded_data_path[i][j]) # able to change the base directory for saving
+                        print("save directory: ", save_path)
+                        data_name = os.path.basename(self.loaded_data_path[i][j]).split("_")
+                        data_name = data_name[0]+'_'+data_name[1]
+                        print("save prefix: ", data_name)
+                        top, bottom, left, right = self.crop
+                        fig, ax = plt.subplots(3, 3, figsize=(15, 15), dpi=300)
+                        ax[0, 0].imshow(self.BF_disc_align[i][j][top:bottom, left:right], cmap='inferno')
+                        ax[0, 0].set_title("Aligned BF disc")
+                        ax[0, 0].axis("off")
+
+                        sum_map = np.sum(self.radial_avg_split[i][j].data, axis=2)
+                        ax[0, 1].imshow(sum_map, cmap='inferno')
+                        ax[0, 1].set_title("Intensity map")
+                        ax[0, 1].axis("off")                 
+
+                        rv = self.radial_var_sum_split[i][j]
+                        ax[0, 2].plot(self.x_axis, rv[self.range_ind[0]:self.range_ind[1]], 'k-', label="var_sum")
+                        ax[0, 2].set_title("Sum of radial variance/mean profiles")
+                        ax[0, 2].legend(loc='upper right')
+
+                        ra = self.radial_avg_sum_split[i][j]
+                        ax_twin = ax[0, 2].twinx()
+                        ax_twin.plot(self.x_axis, ra[self.range_ind[0]:self.range_ind[1]], 'r:', label="mean_sum")
+                        ax_twin.legend(loc='right')
+
+                        if sv_range != None and sv_range != []:
+                            var_map = np.sum(self.radial_var_split[i][j].isig[sv_range[0]:sv_range[1]].data, axis=2)
+                        else:
+                            var_map = np.sum(self.radial_var_split[i][j].isig[self.sv_range[0]:self.sv_range[1]].data, axis=2)
+                        ax[1, 0].imshow(var_map, cmap='inferno')
+                        ax[1, 0].set_title('Variance map\nscattering vector range %.3f-%.3f (1/Å)'%(self.sv_range[0], self.sv_range[1]))
+
+                        th_map = var_map.copy()
+                        if percentile_threshold != None:
+                            abs_threshold = np.percentile(var_map, percentile_threshold)
+                            th_map[var_map<=abs_threshold] = 0
+                            th_map[var_map>abs_threshold] = 1
+                        else:
+                            th_map[var_map<=self.abs_threshold] = 0
+                            th_map[var_map>self.abs_threshold] = 1                    
+                        ax[1, 1].imshow(th_map, cmap='gray')
+                        ax[1, 1].set_title('High-variance map\nabsolute threshold %.3f'%self.abs_threshold)
+
+                        if also_dp and len(np.nonzero(th_map)[0]) != 0:
+                            if self.new_process_flag:
+                                dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                            else:      
+                                cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
+                                dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
+                                dataset = py4DSTEM.DataCube(dataset.data)
+                                #dataset = dataset.filter_hot_pixels(thresh = 0.1, return_mask=False)
+                                dataset.calibration = cali.calibration
+                                dataset.calibrate()
+
+                            mean_dp = np.mean(dataset.data[np.where(th_map==1)], axis=0)
+                            mean_dps.append(np.sum(dataset.data[np.where(th_map==1)], axis=0))
+                            if save:
+                                mean_dp_save = hs.signals.Signal2D(mean_dp)
+                                mean_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                                mean_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                                mean_dp_save.save(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
+                                if also_tiff:
+                                    tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.tiff", mean_dp_save.data)
+                            if log_scale_dp:
+                                mean_dp[mean_dp <= 0] = 1.0
+                                ax[2, 1].imshow(np.log(mean_dp), cmap='inferno')
+                                ax[2, 1].set_title('(log-scale) Mean diffraction pattern\nfor the high-variance map')
+                            else:
+                                ax[2, 1].imshow(mean_dp, cmap='inferno')
+                                ax[2, 1].set_title('Mean diffraction pattern\nfor the high-variance map')
+
+
+                            max_dp = np.max(dataset.data[np.where(th_map==1)], axis=0)
+                            max_dps.append(max_dp)
+                            if save:
+                                max_dp_save = hs.signals.Signal2D(max_dp)
+                                max_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                                max_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                                max_dp_save.save(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
+                                if also_tiff:
+                                    tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.tif", max_dp_save.data)
+                            if log_scale_dp:
+                                max_dp[max_dp <= 0] = 1.0
+                                ax[1, 2].imshow(np.log(max_dp), cmap='inferno')
+                                ax[1, 2].set_title('(log-scale) Maximum diffraction pattern\nfor the thresholding map')
+                            else:
+                                ax[1, 2].imshow(max_dp, cmap='inferno')
+                                ax[1, 2].set_title('Maximum diffraction pattern\nfor the high-variance map')
+
+                            del dataset # release the occupied memory
+
+                        if len(np.nonzero(th_map)[0]) != 0:
+                            avg_rv = np.mean(self.radial_var_split[i][j].data[np.where(th_map==1)], axis=0)
+                            ax[2, 2].plot(self.x_axis, avg_rv[self.range_ind[0]:self.range_ind[1]], 'k-')
+                            ax[2, 2].set_title('Averaged radial variance profile\nfor the high-variance map')
+
+                            avg_ra = np.mean(self.radial_avg_split[i][j].data[np.where(th_map==1)], axis=0)
+                            ax22_twin = ax[2, 2].twinx()
+                            ax22_twin.plot(self.x_axis, avg_ra[self.range_ind[0]:self.range_ind[1]], 'k-')
+                            ax22_twin.set_title('Averaged radial mean profile\nfor the high-variance map')                    
+                            if save:
+                                avg_rv = hs.signals.Signal1D(avg_rv)
+                                avg_rv.axes_manager[0].scale = self.pixel_size_inv_Ang
+                                avg_rv.save(save_path+'/'+data_name+"_mean_radial_variance_profile_for_threshold_map.hspy", overwrite=True)
+                                avg_ra = hs.signals.Signal1D(avg_ra)
+                                avg_ra.axes_manager[0].scale = self.pixel_size_inv_Ang
+                                avg_ra.save(save_path+'/'+data_name+"_mean_radial_mean_profile_for_threshold_map.hspy", overwrite=True) 
+
+                        ax[1, 0].axis("off")
+                        ax[1, 1].axis("off")
+                        ax[1, 2].axis("off")
+                        ax[2, 0].axis("off")
+                        ax[2, 1].axis("off")
+
+                        fig.suptitle(self.subfolders[i]+" - "+os.path.basename(self.loaded_data_path[i][j])[:15])
+                        fig.tight_layout()
+
+                        if save:
+                            sum_map = hs.signals.Signal2D(sum_map)
+                            sum_map.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[0].scale
+                            sum_map.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[1].scale
+                            sum_map.save(save_path+'/'+data_name+"_intensity_map.hspy", overwrite=True)
+                            rv = hs.signals.Signal1D(rv)
+                            rv.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            rv.save(save_path+'/'+data_name+"_mean_radial_variance_profile.hspy", overwrite=True)
+                            ra = hs.signals.Signal1D(ra)
+                            ra.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                            ra.save(save_path+'/'+data_name+"_mean_radial_mean_profile.hspy", overwrite=True)            
+                            var_map = hs.signals.Signal2D(var_map)
+                            var_map = hs.signals.Signal2D(var_map)
+                            var_map.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[0].scale
+                            var_map.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[1].scale
+                            var_map.save(save_path+'/'+data_name+"_variance_map.hspy", overwrite=True)
+                            th_map = hs.signals.Signal2D(th_map)
+                            th_map.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[0].scale
+                            th_map.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[1].scale
+                            th_map.save(save_path+'/'+data_name+"_threshold_map.hspy", overwrite=True)
+                            fig.savefig(save_path+'/'+data_name+"_summary.png")
+                            if also_tiff:
+                                tifffile.imwrite(save_path+'/'+data_name+"_intensity_map.tif", sum_map.data)
+                                tifffile.imwrite(save_path+'/'+data_name+"_mean_radial_variance_profile.tif", rv.data)
+                                tifffile.imwrite(save_path+'/'+data_name+"_mean_radial_mean_profile.tif", ra.data)
+                                tifffile.imwrite(save_path+'/'+data_name+"_variance_map.tif", var_map.data)
+                                tifffile.imwrite(save_path+'/'+data_name+"_threshold_map.tif", th_map.data)
+
+                    max_dps = np.asarray(max_dps)
+                    mean_dps = np.asarray(mean_dps)
+                    fig_dp, ax_dp = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
+                    if log_scale_dp:
+                        ax_dp[0].imshow(np.log(np.mean(max_dps, axis=0)), cmap="inferno")
+                    else:
+                        ax_dp[0].imshow(np.sum(max_dps, axis=0), cmap="inferno")
+                    ax_dp[0].axis("off")
+                    ax_dp[0].set_title("sum of all max diffraction patterns from each data")
+                    if log_scale_dp:
+                        ax_dp[1].imshow(np.log(np.mean(mean_dps, axis=0)), cmap="inferno")
+                    else:
+                        ax_dp[1].imshow(np.sum(mean_dps, axis=0), cmap="inferno")
+                    ax_dp[1].axis("off")
+                    ax_dp[1].set_title("sum of all diffraction patterns")
+                    fig_dp.tight_layout()
+                    plt.show()
+
+
+    def summary_save_specific(self, sv_range=None, percentile_threshold=None, save=False, also_dp=False, log_scale_dp=False, also_tiff=False, specific_data=[]):
+        
+        for i in range(len(self.subfolders)):
+            num_img = len(self.radial_var_split[i])
+            max_dps = []
+            mean_dps = []
+            for j in range(num_img):
                 save_path = os.path.dirname(self.loaded_data_path[i][j]) # able to change the base directory for saving
                 print("save directory: ", save_path)
                 data_name = os.path.basename(self.loaded_data_path[i][j]).split("_")
                 data_name = data_name[0]+'_'+data_name[1]
                 print("save prefix: ", data_name)
                 top, bottom, left, right = self.crop
-                fig, ax = plt.subplots(3, 3, figsize=(15, 15))
+                fig, ax = plt.subplots(3, 3, figsize=(15, 15), dpi=300)
                 ax[0, 0].imshow(self.BF_disc_align[i][j][top:bottom, left:right], cmap='inferno')
                 ax[0, 0].set_title("Aligned BF disc")
                 ax[0, 0].axis("off")
@@ -1653,6 +2389,13 @@ class radial_profile_analysis():
                         
                     mean_dp = np.mean(dataset.data[np.where(th_map==1)], axis=0)
                     mean_dps.append(np.sum(dataset.data[np.where(th_map==1)], axis=0))
+                    if save:
+                        mean_dp_save = hs.signals.Signal2D(mean_dp)
+                        mean_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                        mean_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                        mean_dp_save.save(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.tiff", mean_dp_save.data)
                     if log_scale_dp:
                         mean_dp[mean_dp <= 0] = 1.0
                         ax[2, 1].imshow(np.log(mean_dp), cmap='inferno')
@@ -1661,16 +2404,16 @@ class radial_profile_analysis():
                         ax[2, 1].imshow(mean_dp, cmap='inferno')
                         ax[2, 1].set_title('Mean diffraction pattern\nfor the high-variance map')
                         
-                    if save:
-                        mean_dp = hs.signals.Signal2D(mean_dp)
-                        mean_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                        mean_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                        mean_dp.save(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
-                        if also_tiff:
-                            tifffile.imwrite(save_path+'/'+data_name+"_mean_diffraction_pattern_for_threshold_map.tiff", mean_dp.data)
-        
+                        
                     max_dp = np.max(dataset.data[np.where(th_map==1)], axis=0)
                     max_dps.append(max_dp)
+                    if save:
+                        max_dp_save = hs.signals.Signal2D(max_dp)
+                        max_dp_save.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                        max_dp_save.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
+                        max_dp_save.save(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
+                        if also_tiff:
+                            tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.tif", max_dp_save.data)
                     if log_scale_dp:
                         max_dp[max_dp <= 0] = 1.0
                         ax[1, 2].imshow(np.log(max_dp), cmap='inferno')
@@ -1679,14 +2422,6 @@ class radial_profile_analysis():
                         ax[1, 2].imshow(max_dp, cmap='inferno')
                         ax[1, 2].set_title('Maximum diffraction pattern\nfor the high-variance map')
                         
-                    if save:
-                        max_dp = hs.signals.Signal2D(max_dp)
-                        max_dp.axes_manager[0].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                        max_dp.axes_manager[1].scale = self.radial_var_split[i][j].axes_manager[-1].scale
-                        max_dp.save(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.hspy", overwrite=True)
-                        if also_tiff:
-                            tifffile.imwrite(save_path+'/'+data_name+"_max_diffraction_pattern_for_threshold_map.tif", max_dp.data)
-
                     del dataset # release the occupied memory
                     
                 if len(np.nonzero(th_map)[0]) != 0:
@@ -1745,7 +2480,7 @@ class radial_profile_analysis():
 
             max_dps = np.asarray(max_dps)
             mean_dps = np.asarray(mean_dps)
-            fig_dp, ax_dp = plt.subplots(1, 2, figsize=(12, 6))
+            fig_dp, ax_dp = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
             if log_scale_dp:
                 ax_dp[0].imshow(np.log(np.mean(max_dps, axis=0)), cmap="inferno")
             else:
@@ -1760,8 +2495,8 @@ class radial_profile_analysis():
             ax_dp[1].set_title("sum of all diffraction patterns")
             fig_dp.tight_layout()
             plt.show()
-
-
+            
+            
 # The code below is the original script of 'drca' (https://github.com/jinseuk56/drca)
 # You can find the related research work in the following link: https://doi.org/10.1016/j.ultramic.2021.113314
 # This is used to integrate many 3D variance profile data into one input data matrix,
@@ -1806,27 +2541,34 @@ class drca():
             self.data_storage, self.data_shape = data_load_4d(adr, rescale, verbose)
             
         self.original_data_shape = self.data_shape.copy()
+        
+        if self.dat_dim == 3:
+            if len(self.dat_dim_range) > self.original_data_shape[0, 2]:
+                difference = len(self.dat_dim_range) - self.original_data_shape[0, 2]
+                self.dat_dim_range = self.dat_dim_range[:-difference]
+                self.num_dim = len(self.dat_dim_range)
+                if verbose:
+                    print("Data shape")
+                    print(self.original_data_shape)
+                    print("Spectrum length: %d"%self.num_dim)
 
-        if len(self.dat_dim_range) > self.original_data_shape[0, 2]:
-            difference = len(self.dat_dim_range) - self.original_data_shape[0, 2]
-            self.dat_dim_range = self.dat_dim_range[:-difference]
-            self.num_dim = len(self.dat_dim_range)
-            print("Data shape")
-            print(self.original_data_shape)
-            print("Spectrum length: %d"%self.num_dim)
+            elif len(self.dat_dim_range) < self.original_data_shape[0, 2]:
+                difference = self.original_data_shape[0, 2] - len(self.dat_dim_range)
+                self.dat_dim_range = np.arange(cr_range[0], cr_range[1]+difference*cr_range[2], cr_range[2]) * dat_scale
+                self.num_dim = len(self.dat_dim_range)
+                if verbose:
+                    print("Data shape")
+                    print(self.original_data_shape)
+                    print("Spectrum length: %d"%self.num_dim)
 
-        elif len(self.dat_dim_range) < self.original_data_shape[0, 2]:
-            difference = self.original_data_shape[0, 2] - len(self.dat_dim_range)
-            self.dat_dim_range = np.arange(cr_range[0], cr_range[1]+difference*cr_range[2], cr_range[2]) * dat_scale
-            self.num_dim = len(self.dat_dim_range)
-            print("Data shape")
-            print(self.original_data_shape)
-            print("Spectrum length: %d"%self.num_dim)
-
+            else:
+                if verbose:
+                    print("Data shape")
+                    print(self.original_data_shape)
+                    print("Spectrum length: %d"%self.num_dim)
+                    
         else:
-            print("Data shape")
-            print(self.original_data_shape)
-            print("Spectrum length: %d"%self.num_dim)
+            self.original_dp_shape = self.original_data_shape[0, 2:]
 
              
     def binning(self, bin_y, bin_x, str_y, str_x, offset=0, rescale_0to1=True):
@@ -1868,7 +2610,7 @@ class drca():
         if result_visual:
             np.seterr(divide='ignore')
             for i in range(self.num_img):
-                fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                 if log_scale:
                     ax.imshow(np.log(np.mean(self.data_storage[i], axis=(0, 1))), cmap="viridis")
                 else:
@@ -1882,14 +2624,14 @@ class drca():
             self.center_removed = True
             data_cr = []
             for i in range(self.num_img):
-                ri = radial_indices(self.data_storage[i].shape[2:], [center_remove, np.max(self.data_shape[2:])], center=self.center_pos[i])
+                ri = radial_indices(self.data_storage[i].shape[2:], [center_remove, np.max(self.original_dp_shape)], center=self.center_pos[i])
                 data_cr.append(np.multiply(self.data_storage[i], ri))
                 
             self.data_storage = data_cr
             
             if result_visual:
                 for i in range(self.num_img):
-                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                     if log_scale:
                         ax.imshow(np.log(np.mean(self.data_storage[i], axis=(0, 1))), cmap="viridis")
                     else:
@@ -1936,7 +2678,7 @@ class drca():
                     tmp = np.zeros((radial_range[1]*2, radial_range[1]*2))
                     tmp[self.k_indy, self.k_indx] = np.sum(flattened, axis=(0, 1))
 
-                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                     ax.imshow(tmp, cmap="viridis")
                     ax.axis("off")
                     fig.tight_layout()
@@ -1997,10 +2739,10 @@ class drca():
         self.dataset_input = dataset_flat[self.ri]
         self.dataset_input = self.dataset_input.astype(np.float32)
         
-    def ini_DR(self, method="nmf", num_comp=5, result_visual=True, intensity_range="absolute"):
+    def ini_DR(self, method="nmf", num_comp=5, result_visual=True, intensity_range="absolute", tolerance=1E-4, max_iteration=2000):
         self.DR_num_comp = num_comp
         if method=="nmf":
-            self.DR = NMF(n_components=num_comp, init="nndsvda", solver="mu", max_iter=2000, verbose=result_visual)
+            self.DR = NMF(n_components=num_comp, init="nndsvda", solver="mu", max_iter=max_iteration, verbose=result_visual, tol=tolerance)
             
             self.DR_coeffs = self.DR.fit_transform(self.dataset_input)
             self.DR_comp_vectors = self.DR.components_
@@ -2027,7 +2769,7 @@ class drca():
         
         if result_visual:
             if self.dat_dim == 3:
-                fig, ax = plt.subplots(1, 1, figsize=(6, 4)) # all loading vectors
+                fig, ax = plt.subplots(1, 1, figsize=(6, 4), dpi=300) # all loading vectors
                 for i in range(self.DR_num_comp):
                     ax.plot(self.dat_dim_range, self.DR_comp_vectors[i], "-", c=self.color_rep[i+1], label="loading vector %d"%(i+1))
                 ax.legend(fontsize="large")
@@ -2044,7 +2786,7 @@ class drca():
                         tmp = np.zeros((self.radial_range[1]*2, self.radial_range[1]*2))
                         tmp[self.k_indy, self.k_indx] = self.DR_comp_vectors[i]
 
-                        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                        fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                         ax.imshow(tmp, cmap="inferno")
                         ax.axis("off")
                         fig.tight_layout()
@@ -2052,7 +2794,7 @@ class drca():
 
                 else:
                     for i in range(self.DR_num_comp):
-                        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                        fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                         ax.imshow(self.DR_comp_vectors[i].reshape((self.w_size*2, self.w_size*2)), cmap="inferno")
                         ax.axis("off")
                         fig.tight_layout()
@@ -2060,7 +2802,7 @@ class drca():
 
             if intensity_range == "relative":
                 for i in range(self.num_img):
-                    fig, ax = plt.subplots(1, self.DR_num_comp, figsize=(5*self.DR_num_comp, 5))
+                    fig, ax = plt.subplots(1, self.DR_num_comp, figsize=(5*self.DR_num_comp, 5), dpi=300)
                     for j in range(self.DR_num_comp):
                         tmp = ax[j].imshow(self.coeffs_reshape[i][:, :, j], cmap="inferno")
                         ax[j].set_title("loading vector %d map"%(j+1), fontsize=10)
@@ -2072,7 +2814,7 @@ class drca():
                 min_val = np.min(coeffs)
                 max_val = np.max(coeffs)
                 for i in range(self.num_img):
-                    fig, ax = plt.subplots(1, self.DR_num_comp, figsize=(5*self.DR_num_comp, 5))
+                    fig, ax = plt.subplots(1, self.DR_num_comp, figsize=(5*self.DR_num_comp, 5), dpi=300)
                     for j in range(self.DR_num_comp):
                         tmp = ax[j].imshow(self.coeffs_reshape[i][:, :, j], vmin=min_val, vmax=max_val, cmap="inferno")
                         ax[j].set_title("loading vector %d map"%(j+1), fontsize=10)
@@ -2096,7 +2838,7 @@ class drca():
                 print("%d perplexity %.1f finished"%(order+1, p))
                 print("%.2f min have passed"%((time.time()-start)/60))
                 
-                fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
                 ax.scatter(tmp_tsne.embedding_[:, 0], tmp_tsne.embedding_[:, 1], s=1, c="black")
                 ax.set_title("perplexity %.1f"%p)
                 fig.tight_layout()
@@ -2192,7 +2934,7 @@ class drca():
 
             sectors = np.asarray(sectors, dtype=np.int32)
 
-            fig, ax = plt.subplots(1, 2, figsize=(14, 7))
+            fig, ax = plt.subplots(1, 2, figsize=(14, 7), dpi=300)
             ax[0].scatter(r_point[1], r_point[0], s=10, c="red", marker="*")
             ax[0].scatter(g_point[1], g_point[0], s=10, c="green", marker="*")
             ax[0].scatter(b_point[1], b_point[0], s=10, c="blue", marker="*")
@@ -2208,7 +2950,7 @@ class drca():
             self.blue_reshape = reshape_coeff(np.expand_dims(blue, axis=1), self.data_shape)
 
             for j in range(self.num_img):
-                fig, ax = plt.subplots(1, 4, figsize=(5*4, 5))
+                fig, ax = plt.subplots(1, 4, figsize=(5*4, 5), dpi=300)
                 ax[0].imshow(self.color_reshape[j])
                 ax[0].axis("off")
                 ax[1].imshow(self.red_reshape[j], cmap="Reds")
@@ -2233,7 +2975,7 @@ class drca():
                     else:
                         self.sector_avg[i] = np.zeros(self.num_dim)
 
-                fig, ax = plt.subplots(1, 2, figsize=(15, 8))
+                fig, ax = plt.subplots(1, 2, figsize=(15, 8), dpi=300)
 
                 denominator = np.max(self.sector_avg, axis=1)
                 self.sector_avg = self.sector_avg / denominator[:, np.newaxis]
@@ -2270,7 +3012,7 @@ class drca():
 
                 row_n = num_sector
                 col_n = 1
-                fig, ax = plt.subplots(row_n, col_n, figsize=(7, 50))
+                fig, ax = plt.subplots(row_n, col_n, figsize=(7, 50), dpi=300)
 
 
                 if self.radial_flat:
@@ -2449,7 +3191,7 @@ class drca():
         print(self.label_sort) # label "-1" -> not a cluster
         print(hist) # number of data points in each cluster
         
-        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
         for klass, color in zip(range(0, len(self.color_rep)), self.color_rep[1:]):
             Xo = self.X[self.label_selected == klass]
             ax.scatter(Xo[:, 0], Xo[:, 1], color=color, alpha=0.3, marker='.')
@@ -2461,7 +3203,7 @@ class drca():
 
         
         for i in range(self.num_img):
-            fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8), dpi=300)
             ax.imshow(self.label_reshape[i], cmap=self.custom_cmap, norm=self.norm)
             ax.set_title("image %d"%(i+1), fontsize=10)
             ax.axis("off")
@@ -2471,7 +3213,7 @@ class drca():
         
         if tf_map:
             for i in range(self.num_img):
-                fig, ax = plt.subplots(1, self.num_label, figsize=(3*self.num_label, 3))
+                fig, ax = plt.subplots(1, self.num_label, figsize=(3*self.num_label, 3), dpi=300)
                 for j in range(self.num_label):
                     ax[j].imshow(selected[j][i], cmap="afmhot")
                     ax[j].set_title("label %d map"%(self.label_sort[j]+1), fontsize=10)
@@ -2491,7 +3233,7 @@ class drca():
                 print("number of pixels in the label %d cluster: %d"%(self.label_sort[i], hist[i]))
                 self.lines[i] = np.mean(self.dataset_flat[ind], axis=0)
 
-            fig, ax = plt.subplots(1, 2, figsize=(15, 8))
+            fig, ax = plt.subplots(1, 2, figsize=(15, 8), dpi=300)
 
             # normalize representative spectra for comparison
             if normalize == 'max':
@@ -2530,7 +3272,7 @@ class drca():
 
             row_n = self.num_label
             col_n = 1
-            fig, ax = plt.subplots(row_n, col_n, figsize=(7, 50))
+            fig, ax = plt.subplots(row_n, col_n, figsize=(7, 50), dpi=300)
 
 
             if self.radial_flat:
@@ -2700,7 +3442,7 @@ def flattening(fdata, flat_option="box", crop_dist=None, c_pos=None):
 
             tmp = fdata[:, :, h_si:h_fi, w_si:w_fi]
             
-            fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+            fig, ax = plt.subplots(1, 1, figsize=(5, 5), dpi=300)
             ax.imshow(np.log(np.mean(tmp, axis=(0, 1))), cmap="viridis")
             ax.axis("off")
             plt.show()
@@ -2798,3 +3540,187 @@ def label_arrangement(label_arr, new_shape):
         selected.append(temp)    
         
     return label_reshape, selected, hist
+
+
+try:
+    from shapely.geometry import Point
+    from shapely.geometry import LineString
+    from shapely.geometry import Polygon
+
+
+    class ConcaveHull(object):
+        '''
+        original code: https://github.com/M-Lin-DM/Concave-Hulls
+        modified by J. Ryu
+        '''
+        def __init__(self, points, k):
+            if isinstance(points, np.core.ndarray):
+                self.data_set = points
+            elif isinstance(points, list):
+                self.data_set = np.array(points)
+            else:
+                raise ValueError('Please provide an [N,2] numpy array or a list of lists.')
+
+            # Clean up duplicates
+            self.data_set = np.unique(self.data_set, axis=0)
+
+            # Create the initial index
+            self.indices = np.ones(self.data_set.shape[0], dtype=bool)  # bool of a column of all 1's
+
+            self.k = k
+
+        @staticmethod
+        def dist_pt_to_group(a, b):  # a is a (n,2) , b is (1,2) arrays
+            d = np.sqrt(np.sum(np.square(np.subtract(a, b)), axis=1))
+            return d
+
+        @staticmethod
+        def get_lowest_latitude_index(points):
+            indices = np.argsort(points[:, 1])
+            return indices[0]
+
+        @staticmethod
+        def norm_array(v):  # normalize row vectors in an array. observations are rows
+            norms = np.array(np.sqrt(np.sum(np.square(v), axis=1)), ndmin=2).transpose()
+            return np.divide(v, norms)
+
+        @staticmethod
+        def norm(v):  # normalize a single vector, is there an existing command?
+            norms = np.array(np.sqrt(np.sum(np.square(v))))
+            return v / norms
+
+        def get_k_nearest(self, ix, k):
+            """
+            Calculates the k nearest point indices to the point indexed by ix
+            :param ix: Index of the starting point
+            :param k: Number of neighbors to consider
+            :return: Array of indices into the data set array
+            """
+            ixs = self.indices
+            # base_indices is list of linear indicies that are TRUE, ie part of dataset
+            base_indices = np.arange(len(ixs))[ixs]
+            distances = self.dist_pt_to_group(self.data_set[ixs, :], self.data_set[ix, :])
+            sorted_indices = np.argsort(distances)
+
+            kk = min(k, len(sorted_indices))
+            k_nearest = sorted_indices[range(kk)]
+            return base_indices[k_nearest]
+
+        def clockwise_angles(self, last, ix, ixs, first):  # last needs to be the index of the previous current point
+            if first == 1:
+                last_norm = np.array([-1, 0], ndmin=2)
+            elif first == 0:
+                last_norm = self.norm(np.subtract(self.data_set[last, :], self.data_set[ix,:]))  # normalized vector pointing towards previous point
+            ixs_norm = self.norm_array(np.subtract(self.data_set[ixs, :], self.data_set[ix,:]))  # normalized row vectors pointing to set of k nearest neibs
+            ang = np.zeros((ixs.shape[0], 1))
+            for j in range(ixs.shape[0]):
+                theta = np.arccos(np.dot(last_norm, ixs_norm[j, :]))
+                # ang[j,0] = theta
+                z_comp = np.cross(last_norm, ixs_norm[j, :])
+                # ang[j,2] = z
+                if z_comp <= 0:
+                    ang[j, 0] = theta
+                elif z_comp > 0:
+                    ang[j, 0] = 2 * np.pi - theta
+            return np.squeeze(ang)
+
+        def recurse_calculate(self):
+            """
+            Calculates the concave hull using the next value for k while reusing the distances dictionary
+            :return: Concave hull
+            """
+            recurse = ConcaveHull(self.data_set, self.k + 1)
+            if recurse.k >= self.data_set.shape[0]:
+                print(" max k reached, at k={0}".format(recurse.k))
+                return None
+            # print("k={0}".format(recurse.k))
+            return recurse.calculate()
+
+        def calculate(self):
+            """
+            Calculates the convex hull of the data set as an array of points
+            :return: Array of points (N, 2) with the concave hull of the data set
+            """
+            if self.data_set.shape[0] < 3:
+                return None
+
+            if self.data_set.shape[0] == 3:
+                return self.data_set
+
+            # Make sure that k neighbors can be found
+            kk = min(self.k, self.data_set.shape[0])
+
+            first_point = self.get_lowest_latitude_index(self.data_set)
+            current_point = first_point
+            # last_point = current_point # not sure if this is necessary since it wont get used until after step 2
+
+            # Note that hull and test_hull are matrices (N, 2)
+            hull = np.reshape(np.array(self.data_set[first_point, :]), (1, 2))
+            test_hull = hull
+
+            # Remove the first point
+            self.indices[first_point] = False
+
+            step = 2
+            stop = 2 + kk
+
+            while ((current_point != first_point) or (step == 2)) and len(self.indices[self.indices]) > 0:  # last condition counts number of ones, points in dataset
+                if step == stop:
+                    self.indices[first_point] = True
+                # notice how get_k_nearest doesnt take the data set directly as an arg, as it is implicit that it takes self as an imput because we are inside a class:
+                knn = self.get_k_nearest(current_point, kk)  # knn = [3,6,2] or [0,2,7] etc indicies into the full dataset (with no points removed)
+
+                if step == 2:
+                    angles = self.clockwise_angles(1, current_point, knn, 1)
+                else:
+                    # Calculates the headings between first_point and the knn points
+                    # Returns angles in the same indexing sequence as in knn
+                    angles = self.clockwise_angles(last_point, current_point, knn, 0)
+
+                # Calculate the candidate indexes (largest angles first). candidates =[0,1,2]  or [2,1,0] etc if kk=3
+                candidates = np.argsort(-angles)
+
+                i = 0
+                invalid_hull = True
+
+                while invalid_hull and i < len(candidates):
+                    candidate = candidates[i]
+
+                    # Create a test hull to check if there are any self-intersections
+                    next_point = np.reshape(self.data_set[knn[candidate], :], (1, 2))
+                    test_hull = np.append(hull, next_point, axis=0)
+
+                    line = LineString(test_hull)
+                    invalid_hull = not line.is_simple  # invalid_hull will remain True for every candidate which creates a line that intersects the hull. as soon as the hull doesnt self intersect, it will become false and the loop will terminate
+                    i += 1
+
+                if invalid_hull:
+                    # print("invalid hull for all nearest neibs")
+                    return self.recurse_calculate()
+
+                last_point = current_point  # record last point for clockwise angles
+                current_point = knn[candidate] # candidate = 0, 1, or 2 if kk=3
+                hull = test_hull
+
+                self.indices[current_point] = False # we remove the newly found current point from the "mask" indicies so that it wont be passed to get_k_nearest (within the implicit input, self)
+                step += 1
+
+            poly = Polygon(hull)
+
+            count = 0
+            total = self.data_set.shape[0]
+            for ix in range(total):
+                pt = Point(self.data_set[ix, :])
+                if poly.intersects(pt) or pt.within(poly):
+                    count += 1
+                else:
+                    continue
+                    # print("point not in polygon")
+
+            if count == total:
+                return hull
+            else:
+                return self.recurse_calculate()
+            
+except:
+    print('shapely is needed for advanced analysis')

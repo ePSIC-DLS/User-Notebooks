@@ -56,7 +56,8 @@
 - The exact path of 'radial_profile_analysis/radial_profile_analysis.py' should be indicated in 'radial_profile_analysis/Run_radial_profile_analysis.ipynb'
 - One or many radial profile datasets can be loaded, and the sum of radial profiles can be seen for each 3D data
 - The feature extraction and classification of data can be achieved using a dimensionality reduction method - non-negative matrix factorisation (NMF)
-- The EDX spectrum images acquired simultaneously with the SEND data can be also loaded and analysed by correlating with the data analysis result of radial profile datasets  
+- The EDX spectrum images acquired simultaneously with the SEND data can be also loaded and analysed by correlating with the data analysis result of radial profile datasets
+- For details on the simultaneous acquisition of 4DSTEM-EDX, please see this [manual](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/20250320_4DSTEM-EDX_Manual.pdf)  
 ![EDX](img/EDX_path.png) ![EDX](img/EDX_data.png)  
 *The EDX data should be stored as shown in the images above*
 - Details can be found inside the notebook
