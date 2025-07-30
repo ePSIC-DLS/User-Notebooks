@@ -37,17 +37,17 @@ with open(info_path, 'r') as f:
 # Assignment of global variables
 # dataset name
 DATA_LABEL = eval(info['data_labels'][0])[index]
-BEAMLINE = info['BEAMLINE']
+basedir = info['basedir']
 YEAR = info['YEAR']
 VISIT = info['VISIT']
 sub = info['sub']
 also_rpl = eval(info['also_rpl'])
 
 cal_timestamp = DATA_LABEL.split('/')[-1]
-base_path = f'/dls/{BEAMLINE}/data/{YEAR}/{VISIT}/processing/Merlin'
+base_path = f'{basedir}/{YEAR}/{VISIT}/processing/Merlin'
 meta_path = f'{base_path}/{DATA_LABEL}/{cal_timestamp}.hdf'
 data_path = f'{base_path}/{DATA_LABEL}/{cal_timestamp}_data.hdf5'
-
+print("data_path:"+data_path)
 save_dir = f'{base_path}/{DATA_LABEL}'
 
 with h5py.File(meta_path,'r') as f:
@@ -80,7 +80,7 @@ print(type(Q_SCALE), Q_SCALE)
 print(type(PARAMS), PARAMS)
 print(type(R_Q_ROTATION), R_Q_ROTATION)
 print(type(DATA_LABEL), DATA_LABEL)
-print(type(BEAMLINE), BEAMLINE)
+print(type(basedir), basedir)
 print(type(YEAR), YEAR)
 print(type(VISIT), VISIT)
 print(type(also_rpl), also_rpl)

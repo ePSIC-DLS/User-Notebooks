@@ -32,13 +32,26 @@ class radial_profile_analysis():
                  include_key=None, exclude_key=None, specific_scan_shape=None,
                  simult_edx=False, edx_key='', 
                  roll_axis=True, edx_crop=[0, 0], verbose=True):
+        
+        now = time.localtime()
+        self.formatted = time.strftime("%Y%m%d_%H%M%S", now)
+        print(f"Formatted local time: {self.formatted}")
+
+        colors_yellows = [(1, 1, 1), (1, 1, 0.9), (1, 1, 0.7), (1, 1, 0.5), (0.9, 0.9, 0.3), (0.8, 0.8, 0.1)]
+        cmap_yellows = mcolors.LinearSegmentedColormap.from_list("Yellows", colors_yellows)
+        colors_cyans = [(1, 1, 1), (0.95, 1, 1), (0.8, 1, 1), (0.5, 0.9, 1), (0.3, 0.8, 0.95), (0.1, 0.6, 0.8)]
+        cmap_cyans = mcolors.LinearSegmentedColormap.from_list("Cyans", colors_cyans)
+        colors_limes = [(1, 1, 1), (0.95, 1, 0.95), (0.9, 1, 0.8), (0.7, 1, 0.5), (0.5, 0.9, 0.3), (0.3, 0.7, 0.1)]
+        cmap_limes = mcolors.LinearSegmentedColormap.from_list("Limes", colors_limes)
+        colors_magenta = [(1, 1, 1), (1, 0.95, 1), (1, 0.8, 1), (1, 0.5, 1), (0.95, 0.3, 0.95), (0.8, 0.1, 0.8)]
+        cmap_magenta = mcolors.LinearSegmentedColormap.from_list("Magenta", colors_magenta)
 
         # create a customized colorbar
         self.color_rep = ["black", "red", "green", "blue", "orange", "purple", "yellow", "lime", 
                     "cyan", "magenta", "lightgray", "peru", "springgreen", "deepskyblue", 
                     "hotpink", "darkgray"]
 
-        self.cm_rep = ["gray", "Reds", "Greens", "Blues", "Oranges", "Purples"]  
+        self.cm_rep = ["gray", "Reds", "Greens", "Blues", "Oranges", "Purples", cmap_yellows, cmap_limes, cmap_cyans, cmap_magenta]  
         
 
         edx_split = []
@@ -298,11 +311,23 @@ class radial_profile_analysis():
         self.loaded_data_mean_path = loaded_data_mean_path
         self.BF_disc_align = BF_disc_align
         self.new_process_flag = new_process_flag
-        
+        self.simult_edx = simult_edx
         if simult_edx:
             self.loaded_edx_path = loaded_edx_path
         
         print("data loaded.")
+
+
+    def print_colormaps(self):
+        gradient = np.linspace(0, 1, 256)
+        gradient = np.vstack((gradient, gradient))
+
+        fig, ax = plt.subplots(len(self.cm_rep)-1, 1, figsize=(6, 8), dpi=300)
+        for i, axs in enumerate(ax.flat):
+            axs.imshow(gradient, aspect='auto', cmap=self.cm_rep[i+1])
+            axs.set_axis_off()
+        fig.tight_layout()
+        plt.show()
 
 
     def center_beam_alignment_check(self, crop=[0, -1, 0, -1], visual_title=True, title_font_size=10):
@@ -332,7 +357,7 @@ class radial_profile_analysis():
                 fig.tight_layout()
             plt.show()
 
-    
+
     def intensity_integration_image(self, visual_title=True, title_font_size=10):
     
         for i in range(len(self.subfolders)):
@@ -357,7 +382,7 @@ class radial_profile_analysis():
                 fig.tight_layout()
             plt.show()
 
-    
+
     def basic_setup(self, str_path, from_unit, to_unit, broadening=0.01, 
                     fill_width=0.1, height=None, width=None, threshold=None, 
                     distance=None, prominence=0.001, visual=True, visual_legend=True):
@@ -437,7 +462,7 @@ class radial_profile_analysis():
             print('structure name')
             print(*int_sf.keys(), sep="\n")
     
-    
+
     def sum_radial_profile(self, str_name=None, profile_type="variance", 
                            visual_legend=True, visual_title=True, title_font_size=10,
                           axis_off=True):            
@@ -529,44 +554,7 @@ class radial_profile_analysis():
         fig_tot.tight_layout()
         plt.show()
 
-    
-    def sum_edx(self, edx_from, edx_to, offset=0.0, edx_scale=0.01, visual=True, visual_title=True, title_font_size=10, axis_off=True):
-        self.edx_dim = self.edx_split[0][0].data.shape[2]
-        self.edx_range = np.linspace(0.0, self.edx_dim*edx_scale, self.edx_dim)
-        self.edx_offset = offset
 
-        self.edx_from = edx_from
-        self.edx_to = edx_to
-        self.edx_scale = edx_scale
-
-        self.edx_range_ind = [int(np.around(self.edx_from/self.edx_scale)), int(np.around(self.edx_to/self.edx_scale))]
-        self.edx_offset_ind = [int(np.around((self.edx_from+self.edx_offset)/self.edx_scale)), int(np.around((self.edx_to+self.edx_offset)/self.edx_scale))]
-
-        if visual:
-            for i in range(len(self.subfolders)):
-                num_img = len(self.edx_split[i])
-                grid_size = int(np.around(np.sqrt(num_img)))
-                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
-                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
-                else:
-                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
-                    
-                for j in range(num_img):
-                    edx_sum_map = np.sum(self.edx_split[i][j].data[:, :, self.edx_range_ind[0]:self.edx_range_ind[1]], axis=2)
-                    ax.flat[j*2].imshow(edx_sum_map, cmap='inferno')
-                    if visual_title:
-                        ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
-                    ax.flat[j*2].axis("off")
-                    
-                    edx_sum = np.mean(self.edx_split[i][j].data[:, :, self.edx_offset_ind[0]:self.edx_offset_ind[1]], axis=(0, 1))
-                    ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], edx_sum, 'k-')
-                    if axis_off:
-                        ax.flat[j*2+1].tick_params(axis="y", labelsize=0, color='white')
-                fig.suptitle(self.subfolders[i]+' EDX intensity map and mean EDX spectrum')
-                fig.tight_layout()
-                plt.show()        
-
-    
     def NMF_decompose(self, num_comp, scale_crop=True, rescale_SI=False, max_normalize=False, rescale_0to1=True, profile_type="variance", verbose=True, tolerance=1E-4, coeff_map_type="absolute"):
         
         self.num_comp = num_comp
@@ -596,7 +584,7 @@ class radial_profile_analysis():
         # NMF - NMF decomposition and visualization
         self.run_SI.ini_DR(method="nmf", num_comp=num_comp, result_visual=verbose, intensity_range=coeff_map_type, tolerance=tolerance)
 
-    
+
     def NMF_result(self, lv_show=None, transparency_percentile=100, visual_title=True, title_font_size=10):
         
         # Loading vectors
@@ -728,7 +716,7 @@ class radial_profile_analysis():
                     fig.tight_layout()
                 plt.show()            
 
-    
+
     def NMF_comparison(self, str_name=None, percentile_threshold=90, ref_variance=0.7, 
                        visual_title=True, title_font_size=10, axis_off=True, visual_individual=True):
         # Show the pixels with high coefficients for each loading vector and the averaged profiles for the mask region
@@ -873,11 +861,37 @@ class radial_profile_analysis():
 
         return lv_line
 
+
+    def high_coeff_area_comparison(self):
+
+        lv_coeff_area_mean = []
+        lv_coeff_area_std = []
+        for lv in range(self.num_comp):
+            lv_coeff_area_sub_mean = []
+            lv_coeff_area_sub_std = []
+            for i in range(len(self.subfolders)):
+                lv_coeff_area_sub_mean.append(np.mean(self.high_coeff_area_split[lv][i]))
+                lv_coeff_area_sub_std.append(np.std(self.high_coeff_area_split[lv][i]))
+            lv_coeff_area_mean.append(lv_coeff_area_sub_mean)
+            lv_coeff_area_std.append(lv_coeff_area_sub_std)
+            
+        for lv in range(self.num_comp):
+            fig, ax = plt.subplots(1, 1, figsize=(15, 6), dpi=300)
+            ax.plot(self.subfolders, lv_coeff_area_mean[lv], 'k-')
+            ax.scatter(self.subfolders, lv_coeff_area_mean[lv], c='r', marker="*")
+            ax.errorbar(self.subfolders, lv_coeff_area_mean[lv], yerr=lv_coeff_area_std[lv], capsize=5, c='b')
+            fig.suptitle("Effective high coeffcieint area of loading vector %d by subfolder"%(lv+1))
+            # plt.subplots_adjust(hspace=0.02, wspace=0.02)
+            fig.tight_layout()
+            plt.show()
+
+        self.lv_coeff_area_mean = lv_coeff_area_mean
+        self.lv_coeff_area_std = lv_coeff_area_std
+
+
     def NMF_summary_save(self, save=False, also_dp=False, log_scale_dp=True, also_tiff=False, fill_width=0.01, prominence_lv=0.001, prominence_profile=0.001):
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_var_split[i])
-            max_dps = []
-            mean_dps = []
             for j in range(num_img):
                 if also_dp:
                     if self.new_process_flag:
@@ -1038,12 +1052,11 @@ class radial_profile_analysis():
                     
                 if also_dp:
                     del dataset # release the occupied memory
-                    
+
+          
     def NMF_summary_save_specific(self, save=False, also_dp=False, log_scale_dp=True, also_tiff=False, fill_width=0.01, prominence_lv=0.001, prominence_profile=0.001, specific_data=[]):
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_var_split[i])
-            max_dps = []
-            mean_dps = []
             for j in range(num_img):
                 for key in specific_data:
                     if key in self.loaded_data_path[i][j]:
@@ -1256,7 +1269,6 @@ class radial_profile_analysis():
             label = db.labels_
             clustered = np.zeros_like(binary_map)
             clustered[X[:, 0], X[:, 1]] = label+1
-            clustered_sub.append(clustered)
             
             if visual_result:
                 fig, ax = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
@@ -1486,7 +1498,111 @@ class radial_profile_analysis():
             
         else:
             return
+
+
+    def single_phase_investigation(self, visual=True, fig_save=False, dp_shape=[515, 515], crop_ind=[0, 515, 0, 515],
+                                   eps=4.5, min_sample=30):
+        self.mean_rvp = {}
+        for i in range(self.num_comp):
+            self.mean_rvp['nominal_LV%d'%(i+1)] = np.zeros(self.profile_length)
+
+        self.num_pixel = {}
+        for i in range(self.num_comp):
+            self.num_pixel['nominal_LV%d'%(i+1)] = 0
+
+        self.mean_edx = {}
+        for i in range(self.num_comp):
+            self.mean_edx['nominal_LV%d'%(i+1)] = np.zeros(self.edx_dim)
+
+        self.dp_storage = {}
+        for i in range(self.num_comp):
+            self.dp_storage['nominal_LV%d'%(i+1)] = []
+
+        self.num_lv_pixel_split = []
+        self.pos_lv_pixel_split = []
+        for i in range(len(self.subfolders)):
+            self.sub_num_pixel = []
+            self.sub_pos_pixel = []
+            for j, adr in enumerate(self.loaded_data_path[i]):
+                print(adr)
+                self.data_num_pixel = {}
+                for i in range(self.num_comp):
+                    self.data_num_pixel['nominal_LV%d'%(i+1)] = 0
+
+                self.data_pos_pixel = {}
+                for i in range(self.num_comp):
+                    self.data_pos_pixel['nominal_LV%d'%(i+1)] = []
+
+                data_key = os.path.basename(adr)[:15]
+                self.effective_small_area(data_key=data_key, threshold_map="NMF", eps=eps, min_sample=min_sample, visual_result=False)
+                self.small_area_investigation(visual_cluster=False, visual_dp=False, save=False, also_tiff=False, virtual_4D=True)
                 
+                datacube = []
+                lv_label = []
+                for lv in range(self.num_comp):
+                    label = [lv+1] * len(self.virtual_lv[lv])
+                    datacube.extend(self.virtual_lv[lv])
+                    lv_label.extend(label)
+
+                lv_label = np.asarray(lv_label)
+                datacube = np.asarray(datacube).reshape(-1, dp_shape[0], dp_shape[1])
+
+                for lv in range(self.num_comp):
+                    ind = np.where(lv_label == lv+1)[0]
+                    for k in ind:
+                        self.dp_storage['nominal_LV%d'%(lv+1)].append(datacube[k][crop_ind[0]:crop_ind[1], crop_ind[2]:crop_ind[3]])
+                
+                if visual:
+                    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+                    ax.imshow(np.sum(self.radial_avg_split[self.sub_ind][self.img_ind].data, axis=2), cmap="gray")
+                for lv in range(self.num_comp):
+                    label_cluster = self.clustered_lv[lv]
+                    label_list = np.unique(label_cluster).astype(int)
+                    
+                    for l in range(0, len(label_list)-1, 1):
+                        try:
+                            polygon = Polygon(self.boundary_lv[lv][l])
+                            x_min, y_min, x_max, y_max = polygon.bounds
+                            grid_density = 1
+
+                            x_coords = np.arange(x_min, x_max, grid_density)
+                            y_coords = np.arange(y_min, y_max, grid_density)
+
+                            inside_points = []
+                            for x in x_coords:
+                                for y in y_coords:
+                                    point = Point(x, y)
+                                    if polygon.contains(point):
+                                        inside_points.append((x, y))
+
+                            inside_points.extend(self.boundary_lv[lv][l])
+                            inside_points = np.asarray(inside_points).astype(int)
+                            if visual:
+                                ax.scatter(inside_points[:, 1], inside_points[:, 0], s=0.5, color=self.color_rep[lv+1], alpha=0.7)
+                            
+                            self.num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
+                            self.mean_rvp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_var_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                            self.mean_edx['nominal_LV%d'%(lv+1)] += np.sum(self.edx_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                            self.data_num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
+                            self.data_pos_pixel['nominal_LV%d'%(lv+1)].append(inside_points.tolist())
+                        except:
+                            self.data_pos_pixel['nominal_LV%d'%(lv+1)].append([])
+                
+                if visual:            
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax.set_xticklabels([])
+                    ax.set_yticklabels([])  
+                    fig.tight_layout()
+                    plt.show()
+                    if fig_save:
+                        fig.savefig("%s_%s_single_phase_area.png"%(self.subfolders[i], data_key), dpi=300)
+                        
+                self.sub_num_pixel.append(self.data_num_pixel)
+                self.sub_pos_pixel.append(self.data_pos_pixel)        
+            self.num_lv_pixel_split.append(self.sub_num_pixel)
+            self.pos_lv_pixel_split.append(self.sub_pos_pixel)
+                        
             
     def scattering_range_of_interest(self, profile_type="variance", str_name=None, fill_width=0.1, height=None, width=None, threshold=None, distance=None, prominence=0.001):
 
@@ -1972,6 +2088,78 @@ class radial_profile_analysis():
         self.thresh_xcor_split = thresh_xcor_split
         return sp_tot
 
+
+    def sum_edx(self, edx_from, edx_to, offset=0.0, edx_scale=0.01, total_edx=False, visual=True, visual_title=True, title_font_size=10, axis_off=True):
+        self.edx_dim = self.edx_split[0][0].data.shape[2]
+        self.edx_range = np.linspace(0.0, self.edx_dim*edx_scale, self.edx_dim)
+        self.edx_offset = offset
+
+        self.edx_from = edx_from
+        self.edx_to = edx_to
+        self.edx_scale = edx_scale
+
+        self.edx_range_ind = [int(np.around(self.edx_from/self.edx_scale)), int(np.around(self.edx_to/self.edx_scale))]
+        self.edx_offset_ind = [int(np.around((self.edx_from+self.edx_offset)/self.edx_scale)), int(np.around((self.edx_to+self.edx_offset)/self.edx_scale))]
+
+        if total_edx:
+            tot_edx = np.zeros(self.edx_dim)
+            for i in range(len(self.subfolders)):
+                num_img = len(self.edx_split[i])
+                for j in range(num_img):
+                    tot_edx += np.sum(self.edx_split[i][j].data, axis=(0, 1))
+                    
+            fig, ax = plt.subplots(1, 1, figsize=(10, 4), dpi=300)
+            ax.plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], tot_edx[self.edx_offset_ind[0]:self.edx_offset_ind[1]], 'k-')
+            ax.tick_params(axis="both", labelsize=15)
+            fig.tight_layout()
+            plt.show()
+
+            self.tot_edx = tot_edx     
+
+        if visual:
+            for i in range(len(self.subfolders)):
+                num_img = len(self.edx_split[i])
+                grid_size = int(np.around(np.sqrt(num_img)))
+                if (num_img - grid_size**2) <= 0 and (num_img - grid_size**2) > -grid_size:
+                    fig, ax = plt.subplots(grid_size, grid_size*2, figsize=(12*2, 12), dpi=300)
+                else:
+                    fig, ax = plt.subplots(grid_size, (grid_size+1)*2, figsize=(12*2, 10), dpi=300)
+                    
+                for j in range(num_img):
+                    edx_sum_map = np.sum(self.edx_split[i][j].data[:, :, self.edx_range_ind[0]:self.edx_range_ind[1]], axis=2)
+                    ax.flat[j*2].imshow(edx_sum_map, cmap='inferno')
+                    if visual_title:
+                        ax.flat[j*2].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
+                    ax.flat[j*2].axis("off")
+                    
+                    edx_sum = np.mean(self.edx_split[i][j].data[:, :, self.edx_offset_ind[0]:self.edx_offset_ind[1]], axis=(0, 1))
+                    ax.flat[j*2+1].plot(self.edx_range[self.edx_range_ind[0]:self.edx_range_ind[1]], edx_sum, 'k-')
+                    if axis_off:
+                        ax.flat[j*2+1].tick_params(axis="y", labelsize=0, color='white')
+                fig.suptitle(self.subfolders[i]+' EDX intensity map and mean EDX spectrum')
+                fig.tight_layout()
+                plt.show()        
+
+
+    def edx_count(self):
+        count_list = []
+        for i in range(len(self.subfolders)):
+            for e in self.edx_split[i]:
+                edx_data = e.data
+                count = np.sum(edx_data, axis=2)
+                count = count.flatten()
+                count = count.tolist()
+                count_list.extend(count)
+
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4), dpi=300)
+        ax.hist(count_list, color='k', bins=50)
+        ax.tick_params(axis="both", labelsize=12)
+        fig.tight_layout()
+        plt.show()
+
+        self.count_list = count_list
+
+
     def edx_classification(self, threshold_map="NMF", visual_title=True, 
                            title_font_size=10, axis_off=True, visual_individual=True):
         if threshold_map == "variance":
@@ -2151,7 +2339,7 @@ class radial_profile_analysis():
             print("Warning! unavailable type!")
 
     
-    def summary_save(self, sv_range=None, percentile_threshold=None, save=False, also_dp=False, log_scale_dp=False, also_tiff=False):
+    def summary_save(self, sv_range=None, percentile_threshold=None, save=False, also_dp=False, log_scale_dp=False, also_tiff=False, specific_data=[]):
         
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_var_split[i])
@@ -2325,8 +2513,8 @@ class radial_profile_analysis():
                     plt.show()
 
 
-    def summary_save_specific(self, sv_range=None, percentile_threshold=None, save=False, also_dp=False, log_scale_dp=False, also_tiff=False, specific_data=[]):
-        
+    def summary_save(self, sv_range=None, percentile_threshold=None, save=False, also_dp=False, log_scale_dp=False, also_tiff=False):
+
         for i in range(len(self.subfolders)):
             num_img = len(self.radial_var_split[i])
             max_dps = []
@@ -2495,7 +2683,7 @@ class radial_profile_analysis():
             ax_dp[1].set_title("sum of all diffraction patterns")
             fig_dp.tight_layout()
             plt.show()
-            
+
             
 # The code below is the original script of 'drca' (https://github.com/jinseuk56/drca)
 # You can find the related research work in the following link: https://doi.org/10.1016/j.ultramic.2021.113314
@@ -2505,6 +2693,16 @@ class radial_profile_analysis():
 
 class drca():
     def __init__(self, adr, dat_dim, dat_unit, cr_range=None, dat_scale=1, rescale=True, DM_file=True, verbose=True):
+
+        colors_yellows = [(1, 1, 1), (1, 1, 0.9), (1, 1, 0.7), (1, 1, 0.5), (0.9, 0.9, 0.3), (0.8, 0.8, 0.1)]
+        cmap_yellows = mcolors.LinearSegmentedColormap.from_list("Yellows", colors_yellows)
+        colors_cyans = [(1, 1, 1), (0.95, 1, 1), (0.8, 1, 1), (0.5, 0.9, 1), (0.3, 0.8, 0.95), (0.1, 0.6, 0.8)]
+        cmap_cyans = mcolors.LinearSegmentedColormap.from_list("Cyans", colors_cyans)
+        colors_limes = [(1, 1, 1), (0.95, 1, 0.95), (0.9, 1, 0.8), (0.7, 1, 0.5), (0.5, 0.9, 0.3), (0.3, 0.7, 0.1)]
+        cmap_limes = mcolors.LinearSegmentedColormap.from_list("Limes", colors_limes)
+        colors_magenta = [(1, 1, 1), (1, 0.95, 1), (1, 0.8, 1), (1, 0.5, 1), (0.95, 0.3, 0.95), (0.8, 0.1, 0.8)]
+        cmap_magenta = mcolors.LinearSegmentedColormap.from_list("Magenta", colors_magenta)
+
         # create a customized colorbar
         self.color_rep = ["black", "red", "green", "blue", "orange", "purple", "yellow", "lime", 
                     "cyan", "magenta", "lightgray", "peru", "springgreen", "deepskyblue", 
@@ -2519,7 +2717,7 @@ class drca():
         sm = cm.ScalarMappable(cmap=self.custom_cmap, norm=self.norm)
         sm.set_array([])
 
-        self.cm_rep = ["gray", "Reds", "Greens", "Blues", "Oranges", "Purples"]  
+        self.cm_rep = ["gray", "Reds", "Greens", "Blues", "Oranges", "Purples", cmap_yellows, cmap_limes, cmap_cyans, cmap_magenta]  
 
         # load data
         self.file_adr = adr
@@ -2570,7 +2768,7 @@ class drca():
         else:
             self.original_dp_shape = self.original_data_shape[0, 2:]
 
-             
+
     def binning(self, bin_y, bin_x, str_y, str_x, offset=0, rescale_0to1=True):
         dataset = []
         data_shape_new = []
@@ -2587,7 +2785,8 @@ class drca():
         
         self.data_storage = dataset
         self.data_shape = data_shape_new
-        
+
+
     def find_center(self, cbox_edge, center_remove, result_visual=True, log_scale=True):
         if self.dat_dim != 4:
             print("data dimension error")
@@ -2639,7 +2838,8 @@ class drca():
                     ax.scatter(self.center_pos[i][1], self.center_pos[i][0], c="r", s=10)
                     ax.axis("off")
                     plt.show()
-                    
+
+
     def make_input(self, min_val=0.0, max_normalize=True, rescale_0to1=False, log_scale=False, radial_flat=True, w_size=0, radial_range=None, final_dim=1):
 
         dataset_flat = []
@@ -2738,7 +2938,8 @@ class drca():
 
         self.dataset_input = dataset_flat[self.ri]
         self.dataset_input = self.dataset_input.astype(np.float32)
-        
+
+
     def ini_DR(self, method="nmf", num_comp=5, result_visual=True, intensity_range="absolute", tolerance=1E-4, max_iteration=2000):
         self.DR_num_comp = num_comp
         if method=="nmf":
@@ -2823,7 +3024,7 @@ class drca():
                     fig.suptitle(self.file_adr[i])
                     plt.show()
 
-                    
+
     def aug_DR(self, num_comp, method="tsne", perplex=[50]):
         start = time.time()
         embeddings = []
@@ -2845,7 +3046,8 @@ class drca():
                 plt.show()
 
         self.embeddings = embeddings
-        
+
+
     def prepare_clustering(self, sel_ind, quick_visual=True):
         
         self.aDR_coeffs = self.embeddings[sel_ind-1]
@@ -3107,6 +3309,7 @@ class drca():
         self.clustering_widgets = pyw.interact(self.clustering, msample=msample_wg, steep=steep_wg, msize=msize_wg,  img_sel=img_wg)
         plt.show()
 
+
     def clustering(self, msample, steep, msize, img_sel):
         start = time.time()
         if msample <= 0:
@@ -3180,7 +3383,8 @@ class drca():
         print("%.2f min have passed"%((time.time()-start)/60))
 
         return self.labels
-        
+
+
     def clustering_result(self, tf_map=False, normalize='max', log_scale=True):
         
         self.clustering_widgets.widget.close_all()
@@ -3303,6 +3507,7 @@ class drca():
             fig.tight_layout()
             plt.show()
 
+
 #####################################################
 # functions #
 #####################################################
@@ -3347,7 +3552,6 @@ def data_load_3d(adr, crop=None, rescale=True, DM_file=True, verbose=True):
     
     shape = np.asarray(shape)
     return storage, shape
-
 
 def data_load_4d(adr, rescale=False, verbose=True):
     storage = []
@@ -3408,7 +3612,6 @@ def binning_SI(si, bin_y, bin_x, str_y, str_x, offset, depth, rescale=True):
     binned = np.asarray(binned).reshape(new_shape[0], new_shape[1], depth)
     
     return binned
-
 
 def radial_indices(shape, radial_range, center=None):
     y, x = np.indices(shape)
