@@ -30,6 +30,8 @@
     - 'Create conversion info file'
     - 'Submit a slurm job'
 # Obtaining the calibration information using the Au reference data
+- (27/08/2025 update) This can be done using the MIB conversion notebook
+![calibration](img/au_calibration_widget.png)
 - The reciprocal pixel size of scanning electron nanodiffraction (SEND) data (4DSTEM data acquired using a pencil beam) should be retrieved from Au reference data
 - The ellipticity of diffraction rings should also be calculated
 - By running 'automatic_Au_xgrating_calibration/Load_change_submit_array_calibration.ipynb', the calibration information json file will be produced for each reference data  
@@ -45,6 +47,8 @@
 ![calibration](img/ellipticity_correction.png)
 *Check the ellipticity calculation (left: ellipticity-corrected, right: original)*
 # Transforming the SEND data into the radial (azimuthal) average/variance profile data
+- (27/08/2025 update) This can be done using the MIB conversion notebook
+![transformation](img/radial_transformation_widget.png)
 - For this, the above processes should be completed (the calibration information will be automatically applied according to the acceleration voltage and camera length)
 - This will flatten each 2D diffraction pattern to a 1D radial average/variance profile
 - The exact path of 'automatic_azimuthal_transformation/apply_elliptical_correction_polardatacube.py' should be indicated in 'automatic_azimuthal_transformation/submit_polar_transform_multiple_jobs.ipynb'
