@@ -1506,6 +1506,10 @@ class radial_profile_analysis():
         for i in range(self.num_comp):
             self.mean_rvp['nominal_LV%d'%(i+1)] = np.zeros(self.profile_length)
 
+        self.mean_rmp = {}
+        for i in range(self.num_comp):
+            self.mean_rmp['nominal_LV%d'%(i+1)] = np.zeros(self.profile_length)
+
         self.num_pixel = {}
         for i in range(self.num_comp):
             self.num_pixel['nominal_LV%d'%(i+1)] = 0
@@ -1582,6 +1586,7 @@ class radial_profile_analysis():
                             
                             self.num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
                             self.mean_rvp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_var_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                            self.mean_rmp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_avg_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
                             self.mean_edx['nominal_LV%d'%(lv+1)] += np.sum(self.edx_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
                             self.data_num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
                             self.data_pos_pixel['nominal_LV%d'%(lv+1)].append(inside_points.tolist())
