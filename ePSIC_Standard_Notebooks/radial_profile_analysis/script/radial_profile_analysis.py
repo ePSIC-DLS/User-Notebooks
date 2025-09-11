@@ -1323,8 +1323,11 @@ class radial_profile_analysis():
                     com_x, com_y = np.mean(sel_coor[1]), np.mean(sel_coor[0])
                     if visual_cluster:
                         ax.scatter(com_x, com_y, s=15, c='k', marker='*')
-                        ax.plot(hull[:, 1], hull[:, 0], 'b-')
-                        ax.text(com_x, com_y, "%d"%(l))
+                        try:
+                            ax.plot(hull[:, 1], hull[:, 0], 'b-')
+                            ax.text(com_x, com_y, "%d"%(l))
+                        except:
+                            ax.text(com_x, com_y, "%d"%(l))
 
                     centroid_label.append([com_y, com_x])
                     boundary_label.append(hull)
@@ -1409,8 +1412,11 @@ class radial_profile_analysis():
 
                 com_x, com_y = np.mean(sel_coor[1]), np.mean(sel_coor[0])
                 ax.scatter(com_x, com_y, s=15, c='k', marker='*')
-                ax.plot(hull[:, 1], hull[:, 0], 'b-')
-                ax.text(com_x, com_y, "%d"%(l))
+                try:
+                    ax.plot(hull[:, 1], hull[:, 0], 'b-')
+                    ax.text(com_x, com_y, "%d"%(l))
+                except:
+                    ax.text(com_x, com_y, "%d"%(l))
 
                 centroid_label.append([com_y, com_x])
                 boundary_label.append(hull)
@@ -1501,7 +1507,8 @@ class radial_profile_analysis():
 
 
     def single_phase_investigation(self, visual=True, fig_save=False, dp_shape=[515, 515], crop_ind=[0, 515, 0, 515],
-                                   eps=4.5, min_sample=30):
+                                   eps=4.5, min_sample=30, diff_size=False, size_list=None):
+        
         self.mean_rvp = {}
         for i in range(self.num_comp):
             self.mean_rvp['nominal_LV%d'%(i+1)] = np.zeros(self.profile_length)
@@ -1522,6 +1529,7 @@ class radial_profile_analysis():
         for i in range(self.num_comp):
             self.dp_storage['nominal_LV%d'%(i+1)] = []
 
+            
         self.num_lv_pixel_split = []
         self.pos_lv_pixel_split = []
         for i in range(len(self.subfolders)):
@@ -1530,15 +1538,23 @@ class radial_profile_analysis():
             for j, adr in enumerate(self.loaded_data_path[i]):
                 print(adr)
                 self.data_num_pixel = {}
-                for i in range(self.num_comp):
-                    self.data_num_pixel['nominal_LV%d'%(i+1)] = 0
+                for lv in range(self.num_comp):
+                    self.data_num_pixel['nominal_LV%d'%(lv+1)] = 0
 
                 self.data_pos_pixel = {}
-                for i in range(self.num_comp):
-                    self.data_pos_pixel['nominal_LV%d'%(i+1)] = []
+                for lv in range(self.num_comp):
+                    self.data_pos_pixel['nominal_LV%d'%(lv+1)] = []
 
                 data_key = os.path.basename(adr)[:15]
-                self.effective_small_area(data_key=data_key, threshold_map="NMF", eps=eps, min_sample=min_sample, visual_result=False)
+                
+                size = self.radial_avg_split[i][j].data.shape[1]
+                
+                if diff_size:
+                    min_size = np.min(size_list)
+                    self.effective_small_area(data_key=data_key, threshold_map="NMF", eps=eps, min_sample=int(min_sample*size/min_size), visual_result=False)
+                else:
+                    self.effective_small_area(data_key=data_key, threshold_map="NMF", eps=eps, min_sample=min_sample, visual_result=False)
+                    
                 self.small_area_investigation(visual_cluster=False, visual_dp=False, save=False, also_tiff=False, virtual_4D=True)
                 
                 datacube = []
