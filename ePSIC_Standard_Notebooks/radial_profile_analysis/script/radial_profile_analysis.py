@@ -22,7 +22,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.colors import hsv_to_rgb
 from sklearn.decomposition import NMF, PCA
 from sklearn.manifold import TSNE
-from sklearn.cluster import OPTICS, DBSCAN
+from sklearn.cluster import DBSCAN, HDBSCAN
 import ipywidgets as pyw
 import time
 
@@ -172,7 +172,10 @@ class radial_profile_analysis():
             #print(*file_adr_, sep='\n')
             print(len(file_adr_))
             file_adr_.sort()
-            edx_adr_.sort()
+            try:
+                edx_adr_.sort()
+            except:
+                print('No EDX files')
             # for f_adr, e_adr in zip(file_adr_, edx_adr_):
             #     print(f_adr.split('/')[-1], e_adr.split('/')[-1])
 
@@ -350,7 +353,9 @@ class radial_profile_analysis():
                 ax.flat[j].imshow(self.BF_disc_align[i][j][top:bottom, left:right])
                 if visual_title:
                     ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
-                ax.flat[j].axis("off")                  
+            
+            for a in ax.flat:
+                a.axis('off')
             fig.suptitle(self.subfolders[i]+' BF disc align result')
             plt.subplots_adjust(hspace=0.1, wspace=0.1)
             if visual_title:
@@ -375,7 +380,9 @@ class radial_profile_analysis():
                 ax.flat[j].imshow(sum_map, cmap='inferno')
                 if visual_title:
                     ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
-                ax.flat[j].axis("off")              
+            
+            for a in ax.flat:
+                a.axis('off')             
             fig.suptitle(self.subfolders[i]+' sum of intensities map')
             plt.subplots_adjust(hspace=0.1, wspace=0.1)
             if visual_title:
@@ -1221,7 +1228,7 @@ class radial_profile_analysis():
                             del dataset # release the occupied memory        
 
                                                 
-    def effective_small_area(self, data_key, threshold_map="NMF", eps=1.5, min_sample=16, visual_result=True):
+    def effective_small_area(self, data_key, threshold_map="NMF", algorithm="DBSCAN", eps=1.5, min_sample=16, visual_result=True):
         self.threshold_map_small = threshold_map
         if self.threshold_map_small == "NMF":
             for i in range(len(self.subfolders)):
@@ -1233,10 +1240,13 @@ class radial_profile_analysis():
                         self.img_ind = j
             clustered_lv = []                
             for lv in range(self.num_comp):
-                db = DBSCAN(eps=eps, min_samples=min_sample)
                 binary_map = self.thresh_coeff_split[lv][self.sub_ind][self.img_ind]
                 sel_coor = np.nonzero(binary_map)
                 X = np.stack((sel_coor[0], sel_coor[1]), axis=1)
+                if algorithm == "DBSCAN":
+                    db = DBSCAN(eps=eps, min_samples=min_sample)
+                elif algorithm == "HDBSCAN":
+                    db = HDBSCAN(min_samples=min_sample)
                 db.fit(X)
                 label = db.labels_
                 clustered = np.zeros_like(binary_map)
@@ -1507,7 +1517,8 @@ class radial_profile_analysis():
 
 
     def single_phase_investigation(self, visual=True, fig_save=False, dp_shape=[515, 515], crop_ind=[0, 515, 0, 515],
-                                   eps=4.5, min_sample=30, diff_size=False, size_list=None):
+                                   eps=4.5, min_sample=30, diff_size=False, size_list=None, cut_too_large=None):
+        
         
         self.mean_rvp = {}
         for i in range(self.num_comp):
@@ -1532,9 +1543,15 @@ class radial_profile_analysis():
             
         self.num_lv_pixel_split = []
         self.pos_lv_pixel_split = []
+        self.clustered_lv_split = []
+        self.centroid_lv_split = []
+        self.boundary_lv_split = []
         for i in range(len(self.subfolders)):
             self.sub_num_pixel = []
             self.sub_pos_pixel = []
+            self.sub_clustered_lv = []
+            self.sub_centroid_lv = []
+            self.sub_boundary_lv = []
             for j, adr in enumerate(self.loaded_data_path[i]):
                 print(adr)
                 self.data_num_pixel = {}
@@ -1556,6 +1573,10 @@ class radial_profile_analysis():
                     self.effective_small_area(data_key=data_key, threshold_map="NMF", eps=eps, min_sample=min_sample, visual_result=False)
                     
                 self.small_area_investigation(visual_cluster=False, visual_dp=False, save=False, also_tiff=False, virtual_4D=True)
+                
+                self.sub_clustered_lv.append(self.clustered_lv)
+                self.sub_centroid_lv.append(self.centroid_lv)
+                self.sub_boundary_lv.append(self.boundary_lv)
                 
                 datacube = []
                 lv_label = []
@@ -1597,15 +1618,19 @@ class radial_profile_analysis():
 
                             inside_points.extend(self.boundary_lv[lv][l])
                             inside_points = np.asarray(inside_points).astype(int)
-                            if visual:
-                                ax.scatter(inside_points[:, 1], inside_points[:, 0], s=0.5, color=self.color_rep[lv+1], alpha=0.7)
                             
-                            self.num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
-                            self.mean_rvp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_var_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
-                            self.mean_rmp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_avg_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
-                            self.mean_edx['nominal_LV%d'%(lv+1)] += np.sum(self.edx_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
-                            self.data_num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
-                            self.data_pos_pixel['nominal_LV%d'%(lv+1)].append(inside_points.tolist())
+                            if cut_too_large != None and len(inside_points) > int(cut_too_large*size*(size-1)):
+                                self.data_pos_pixel['nominal_LV%d'%(lv+1)].append([])
+                            else:                           
+                                if visual:
+                                    ax.scatter(inside_points[:, 1], inside_points[:, 0], s=0.5, color=self.color_rep[lv+1], alpha=0.7)
+
+                                self.num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
+                                self.mean_rvp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_var_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                                self.mean_rmp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_avg_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                                self.mean_edx['nominal_LV%d'%(lv+1)] += np.sum(self.edx_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                                self.data_num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
+                                self.data_pos_pixel['nominal_LV%d'%(lv+1)].append(inside_points.tolist())
                         except:
                             self.data_pos_pixel['nominal_LV%d'%(lv+1)].append([])
                 
@@ -1623,7 +1648,9 @@ class radial_profile_analysis():
                 self.sub_pos_pixel.append(self.data_pos_pixel)        
             self.num_lv_pixel_split.append(self.sub_num_pixel)
             self.pos_lv_pixel_split.append(self.sub_pos_pixel)
-                        
+            self.clustered_lv_split.append(self.sub_clustered_lv)
+            self.centroid_lv_split.append(self.sub_centroid_lv)
+            self.boundary_lv_split.append(self.sub_boundary_lv)                       
             
     def scattering_range_of_interest(self, profile_type="variance", str_name=None, fill_width=0.1, height=None, width=None, threshold=None, distance=None, prominence=0.001):
 
