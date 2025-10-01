@@ -2245,12 +2245,15 @@ class radial_profile_analysis():
                 count = count.tolist()
                 count_list.extend(count)
 
-        fig, ax = plt.subplots(1, 1, figsize=(6, 4), dpi=300)
-        ax.hist(count_list, color='k', bins=50)
-        ax.tick_params(axis="both", labelsize=12)
+        uq_count = np.unique(count_list)
+
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4), dpi = 300)
+        ax.hist(self.count_list, color='black', log=True, bins=len(uq_count))
+        ax.tick_params(axis="both", labelsize=15)
         fig.tight_layout()
         plt.show()
 
+        self.uq_count = uq_count
         self.count_list = count_list
 
 
