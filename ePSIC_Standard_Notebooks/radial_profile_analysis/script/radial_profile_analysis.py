@@ -22,7 +22,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.colors import hsv_to_rgb
 from sklearn.decomposition import NMF, PCA
 from sklearn.manifold import TSNE
-from sklearn.cluster import OPTICS, DBSCAN
+from sklearn.cluster import DBSCAN, HDBSCAN
 import ipywidgets as pyw
 import time
 
@@ -30,7 +30,7 @@ import time
 class radial_profile_analysis():
     def __init__(self, base_dir, subfolders, profile_length, num_load, final_dir=None,
                  include_key=None, exclude_key=None, specific_scan_shape=None,
-                 simult_edx=False, edx_key='', 
+                 simult_edx=False, edx_key='', rebin_256=False,
                  roll_axis=True, edx_crop=[0, 0], verbose=True):
         
         now = time.localtime()
@@ -172,7 +172,10 @@ class radial_profile_analysis():
             #print(*file_adr_, sep='\n')
             print(len(file_adr_))
             file_adr_.sort()
-            edx_adr_.sort()
+            try:
+                edx_adr_.sort()
+            except:
+                print('No EDX files')
             # for f_adr, e_adr in zip(file_adr_, edx_adr_):
             #     print(f_adr.split('/')[-1], e_adr.split('/')[-1])
 
@@ -190,19 +193,29 @@ class radial_profile_analysis():
                 if specific_scan_shape != []:
                     if data.data.shape[:2] != tuple(specific_scan_shape):
                         continue
+                        
+                if rebin_256:
+                    if data.data.shape[1] > 250:
+                        data = data.rebin(scale=(2,2,1))
+                        
                 file_adr.append(adr)
                 data.data = data.data[:, :, :profile_length]
                 local_radial_var_sum = data.mean()
                 pixel_size_inv_Ang = local_radial_var_sum.axes_manager[-1].scale
 
-                if simult_edx:
+                if simult_edx:                 
                     edx_data = hs.load(edx_adr_[e]).data
                     edx_adr.append(edx_adr_[e])
                     if roll_axis:
                         edx_data = np.rollaxis(edx_data, 0, 3)[:data.data.shape[0], :data.data.shape[1]]
                     edx_data = hs.signals.Signal1D(edx_data)
+                    
+                    if rebin_256:
+                        if edx_data.data.shape[1] > 250:
+                            edx_data = edx_data.rebin(scale=(2,2,1))        
+                            
                     if data.data.shape[:2] != edx_data.data.shape[:2]:
-                        print("The scan shape are different")
+                        print("The scan shapes are different between 4DSTEM and EDX")
                         print(adr)
                         print(edx_adr_[e])
                         return
@@ -263,7 +276,11 @@ class radial_profile_analysis():
                         print('There is no mean profile data, so it will be replaced with variance profile data')
                         adr_ = dir_path+"/"+data_name+"_"+'variance.hspy'
                         data = hs.load(adr_)
-                    
+                        
+                if rebin_256:
+                    if data.data.shape[1] > 250:
+                        data = data.rebin(scale=(2,2,1))
+                        
                 loaded_data_mean.append(adr_)
                 data.data = data.data[:, :, :profile_length]
                 local_radial_avg_sum = data.mean()
@@ -314,6 +331,8 @@ class radial_profile_analysis():
         self.simult_edx = simult_edx
         if simult_edx:
             self.loaded_edx_path = loaded_edx_path
+            
+        self.rebin_256 = rebin_256
         
         print("data loaded.")
 
@@ -350,7 +369,9 @@ class radial_profile_analysis():
                 ax.flat[j].imshow(self.BF_disc_align[i][j][top:bottom, left:right])
                 if visual_title:
                     ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
-                ax.flat[j].axis("off")                  
+            
+            for a in ax.flat:
+                a.axis('off')
             fig.suptitle(self.subfolders[i]+' BF disc align result')
             plt.subplots_adjust(hspace=0.1, wspace=0.1)
             if visual_title:
@@ -375,7 +396,9 @@ class radial_profile_analysis():
                 ax.flat[j].imshow(sum_map, cmap='inferno')
                 if visual_title:
                     ax.flat[j].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
-                ax.flat[j].axis("off")              
+            
+            for a in ax.flat:
+                a.axis('off')             
             fig.suptitle(self.subfolders[i]+' sum of intensities map')
             plt.subplots_adjust(hspace=0.1, wspace=0.1)
             if visual_title:
@@ -573,10 +596,10 @@ class radial_profile_analysis():
 
         if scale_crop:
             self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_, self.to_, self.pixel_size_inv_Ang], 
-                                    dat_scale=1, rescale=rescale_SI, DM_file=True, verbose=verbose)
+                                    dat_scale=1, rescale=rescale_SI, DM_file=True, verbose=verbose, rebin_256=self.rebin_256)
         else:
             self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_ind, self.to_ind, 1], 
-                                    dat_scale=self.pixel_size_inv_Ang, rescale=rescale_SI, DM_file=True, verbose=verbose)           
+                                    dat_scale=self.pixel_size_inv_Ang, rescale=rescale_SI, DM_file=True, verbose=verbose, rebin_256=self.rebin_256)           
 
         # NMF - prepare the input dataset
         self.run_SI.make_input(min_val=0.0, max_normalize=max_normalize, rescale_0to1=rescale_0to1)
@@ -896,6 +919,9 @@ class radial_profile_analysis():
                 if also_dp:
                     if self.new_process_flag:
                         dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                        if self.rebin_256:
+                            if dataset.data.shape[1] > 250:
+                                dataset = dataset.rebin(scale = (2,2,1,1))
                     else:      
                         cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
                         dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
@@ -1063,6 +1089,9 @@ class radial_profile_analysis():
                         if also_dp:
                             if self.new_process_flag:
                                 dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                                if self.rebin_256:
+                                    if dataset.data.shape[1] > 250:
+                                        dataset = dataset.rebin(scale = (2,2,1,1))
                             else:      
                                 cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
                                 dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
@@ -1221,7 +1250,7 @@ class radial_profile_analysis():
                             del dataset # release the occupied memory        
 
                                                 
-    def effective_small_area(self, data_key, threshold_map="NMF", eps=1.5, min_sample=16, visual_result=True):
+    def effective_small_area(self, data_key, threshold_map="NMF", algorithm="DBSCAN", eps=1.5, min_sample=16, visual_result=True):
         self.threshold_map_small = threshold_map
         if self.threshold_map_small == "NMF":
             for i in range(len(self.subfolders)):
@@ -1233,10 +1262,16 @@ class radial_profile_analysis():
                         self.img_ind = j
             clustered_lv = []                
             for lv in range(self.num_comp):
-                db = DBSCAN(eps=eps, min_samples=min_sample)
                 binary_map = self.thresh_coeff_split[lv][self.sub_ind][self.img_ind]
                 sel_coor = np.nonzero(binary_map)
                 X = np.stack((sel_coor[0], sel_coor[1]), axis=1)
+                if algorithm == "DBSCAN":
+                    db = DBSCAN(eps=eps, min_samples=min_sample)
+                elif algorithm == "HDBSCAN":
+                    db = HDBSCAN(min_samples=min_sample)
+                if len(X) == 0:
+                    X = np.array([[0,0]])
+                    
                 db.fit(X)
                 label = db.labels_
                 clustered = np.zeros_like(binary_map)
@@ -1265,6 +1300,8 @@ class radial_profile_analysis():
             binary_map = self.thresh_var_split[self.sub_ind][self.img_ind]
             sel_coor = np.nonzero(binary_map)
             X = np.stack((sel_coor[0], sel_coor[1]), axis=1)
+            if len(X) == 0:
+                X = np.array([[0,0]])
             db.fit(X)
             label = db.labels_
             clustered = np.zeros_like(binary_map)
@@ -1283,15 +1320,19 @@ class radial_profile_analysis():
 
     def small_area_investigation(self, visual_cluster=True, visual_dp=False, log_dp=True, save=False, also_tiff=False, virtual_4D=False): 
         if self.threshold_map_small == 'NMF':
-            if self.new_process_flag:
-                dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
-            else:      
-                cali = py4DSTEM.read(self.selected_data_path[:-13]+"braggdisks_cali.h5")
-                dataset = py4DSTEM.read(self.selected_data_path[:-13]+"prepared_data.h5")
-                dataset = py4DSTEM.DataCube(dataset.data)
-                #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
-                dataset.calibration = cali.calibration
-                dataset.calibrate()
+            if virtual_4D:
+                if self.new_process_flag:
+                    dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
+                    if self.rebin_256:
+                        if dataset.data.shape[1] > 250:
+                            dataset = dataset.rebin(scale = (2,2,1,1))
+                else:      
+                    cali = py4DSTEM.read(self.selected_data_path[:-13]+"braggdisks_cali.h5")
+                    dataset = py4DSTEM.read(self.selected_data_path[:-13]+"prepared_data.h5")
+                    dataset = py4DSTEM.DataCube(dataset.data)
+                    #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
+                    dataset.calibration = cali.calibration
+                    dataset.calibrate()
 
             save_path = os.path.dirname(self.selected_data_path) # able to change the base directory for saving
             print("save directory: ", save_path)
@@ -1323,15 +1364,20 @@ class radial_profile_analysis():
                     com_x, com_y = np.mean(sel_coor[1]), np.mean(sel_coor[0])
                     if visual_cluster:
                         ax.scatter(com_x, com_y, s=15, c='k', marker='*')
-                        ax.plot(hull[:, 1], hull[:, 0], 'b-')
-                        ax.text(com_x, com_y, "%d"%(l))
+                        try:
+                            ax.plot(hull[:, 1], hull[:, 0], 'b-')
+                            ax.text(com_x, com_y, "%d"%(l))
+                            ax.axis("off")
+                        except:
+                            ax.text(com_x, com_y, "%d"%(l))
+                            ax.axis("off")
 
                     centroid_label.append([com_y, com_x])
                     boundary_label.append(hull)
-                    
-                    mean_dp = np.sum(dataset.data[sel_coor], axis=0)
-                    max_dp = np.max(dataset.data[sel_coor], axis=0)
+                
                     if virtual_4D:
+                        mean_dp = np.sum(dataset.data[sel_coor], axis=0)
+                        max_dp = np.max(dataset.data[sel_coor], axis=0)
                         virtual_label.append(mean_dp)    
                         
                     if visual_dp:
@@ -1374,15 +1420,19 @@ class radial_profile_analysis():
             
 
         if self.threshold_map_small == 'variance':
-            if self.new_process_flag:
-                dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
-            else:      
-                cali = py4DSTEM.read(self.selected_data_path[:-13]+"braggdisks_cali.h5")
-                dataset = py4DSTEM.read(self.selected_data_path[:-13]+"prepared_data.h5")
-                dataset = py4DSTEM.DataCube(dataset.data)
-                #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
-                dataset.calibration = cali.calibration
-                dataset.calibrate()
+            if virtual_4D:
+                if self.new_process_flag:
+                    dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
+                    if self.rebin_256:
+                        if dataset.data.shape[1] > 250:
+                            dataset = dataset.rebin(scale = (2,2,1,1))
+                else:      
+                    cali = py4DSTEM.read(self.selected_data_path[:-13]+"braggdisks_cali.h5")
+                    dataset = py4DSTEM.read(self.selected_data_path[:-13]+"prepared_data.h5")
+                    dataset = py4DSTEM.DataCube(dataset.data)
+                    #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
+                    dataset.calibration = cali.calibration
+                    dataset.calibrate()
 
             save_path = os.path.dirname(self.selected_data_path) # able to change the base directory for saving
             print("save directory: ", save_path)
@@ -1409,16 +1459,20 @@ class radial_profile_analysis():
 
                 com_x, com_y = np.mean(sel_coor[1]), np.mean(sel_coor[0])
                 ax.scatter(com_x, com_y, s=15, c='k', marker='*')
-                ax.plot(hull[:, 1], hull[:, 0], 'b-')
-                ax.text(com_x, com_y, "%d"%(l))
+                try:
+                    ax.plot(hull[:, 1], hull[:, 0], 'b-')
+                    ax.text(com_x, com_y, "%d"%(l))
+                    ax.axis("off")
+                except:
+                    ax.text(com_x, com_y, "%d"%(l))
+                    ax.axis("off")
 
                 centroid_label.append([com_y, com_x])
                 boundary_label.append(hull)
 
-                mean_dp = np.sum(dataset.data[sel_coor], axis=0)
-                max_dp = np.max(dataset.data[sel_coor], axis=0)                
-                
                 if virtual_4D:
+                    mean_dp = np.sum(dataset.data[sel_coor], axis=0)
+                    max_dp = np.max(dataset.data[sel_coor], axis=0)     
                     virtual_label.append(mean_dp)
                     
                 if visual_dp:
@@ -1465,25 +1519,31 @@ class radial_profile_analysis():
                     fig, ax = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
                     ax[0].imshow(label_cluster, cmap='tab20')
                 for l in range(0, len(label_list)-1, 1):
-                    ax_tot.fill(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 
-                               facecolor=self.color_rep[lv+1], 
-                               edgecolor=self.color_rep[lv+1], linewidth=3, alpha=0.5)
+                    try:
+                        ax_tot.fill(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 
+                                facecolor=self.color_rep[lv+1], 
+                                edgecolor=self.color_rep[lv+1], linewidth=3, alpha=0.5)
+                        ax_tot.axis("off")
                     
-                    if visual_lv:
-                        ax[0].scatter(self.centroid_lv[lv][l][1], self.centroid_lv[lv][l][0], s=15, c='k', marker='*')
-                        ax[0].text(self.centroid_lv[lv][l][1], self.centroid_lv[lv][l][0], "%d"%(l+1))
-                        ax[0].plot(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 'b-')
-                        ax[0].axis("off")
+                        if visual_lv:
+                            ax[0].scatter(self.centroid_lv[lv][l][1], self.centroid_lv[lv][l][0], s=15, c='k', marker='*')
+                            ax[0].text(self.centroid_lv[lv][l][1], self.centroid_lv[lv][l][0], "%d"%(l+1))
+                            ax[0].plot(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 'b-')
+                            ax[0].axis("off")
 
-                        ax[1].imshow(np.zeros_like(label_cluster), alpha=0.0)
-                        ax[1].fill(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 
-                                   facecolor=self.color_rep[lv+1], 
-                                   edgecolor=self.color_rep[lv+1], linewidth=3, alpha=0.5)
-                        ax[1].set_xticks([])
-                        ax[1].set_yticks([])
-                        ax[1].set_xticklabels([])
-                        ax[1].set_yticklabels([])
-                        ax[1].set_facecolor('lightgray')
+                            ax[1].imshow(np.zeros_like(label_cluster), alpha=0.0)
+                            ax[1].fill(self.boundary_lv[lv][l][:, 1], self.boundary_lv[lv][l][:, 0], 
+                                    facecolor=self.color_rep[lv+1], 
+                                    edgecolor=self.color_rep[lv+1], linewidth=3, alpha=0.5)
+                            ax[1].set_xticks([])
+                            ax[1].set_yticks([])
+                            ax[1].set_xticklabels([])
+                            ax[1].set_yticklabels([])
+                            ax[1].set_facecolor('lightgray')
+                            ax[1].axis("off")
+                    
+                    except:
+                        ax_tot.axis("off")
 
                 if visual_lv:
                     fig.tight_layout()
@@ -1501,10 +1561,16 @@ class radial_profile_analysis():
 
 
     def single_phase_investigation(self, visual=True, fig_save=False, dp_shape=[515, 515], crop_ind=[0, 515, 0, 515],
-                                   eps=4.5, min_sample=30):
+                                   eps=4.5, min_sample=30, virtual_4D=True, diff_size=False, size_list=None, cut_too_large=None):
+        
+        
         self.mean_rvp = {}
         for i in range(self.num_comp):
             self.mean_rvp['nominal_LV%d'%(i+1)] = np.zeros(self.profile_length)
+
+        self.mean_rmp = {}
+        for i in range(self.num_comp):
+            self.mean_rmp['nominal_LV%d'%(i+1)] = np.zeros(self.profile_length)
 
         self.num_pixel = {}
         for i in range(self.num_comp):
@@ -1518,39 +1584,60 @@ class radial_profile_analysis():
         for i in range(self.num_comp):
             self.dp_storage['nominal_LV%d'%(i+1)] = []
 
+            
         self.num_lv_pixel_split = []
         self.pos_lv_pixel_split = []
+        self.clustered_lv_split = []
+        self.centroid_lv_split = []
+        self.boundary_lv_split = []
         for i in range(len(self.subfolders)):
             self.sub_num_pixel = []
             self.sub_pos_pixel = []
+            self.sub_clustered_lv = []
+            self.sub_centroid_lv = []
+            self.sub_boundary_lv = []
             for j, adr in enumerate(self.loaded_data_path[i]):
                 print(adr)
                 self.data_num_pixel = {}
-                for i in range(self.num_comp):
-                    self.data_num_pixel['nominal_LV%d'%(i+1)] = 0
+                for lv in range(self.num_comp):
+                    self.data_num_pixel['nominal_LV%d'%(lv+1)] = 0
 
                 self.data_pos_pixel = {}
-                for i in range(self.num_comp):
-                    self.data_pos_pixel['nominal_LV%d'%(i+1)] = []
+                for lv in range(self.num_comp):
+                    self.data_pos_pixel['nominal_LV%d'%(lv+1)] = []
 
                 data_key = os.path.basename(adr)[:15]
-                self.effective_small_area(data_key=data_key, threshold_map="NMF", eps=eps, min_sample=min_sample, visual_result=False)
-                self.small_area_investigation(visual_cluster=False, visual_dp=False, save=False, also_tiff=False, virtual_4D=True)
+                
+                size = self.radial_avg_split[i][j].data.shape[1]
+                
+                if diff_size:
+                    min_size = np.min(size_list)
+                    self.effective_small_area(data_key=data_key, threshold_map="NMF", eps=eps, min_sample=int(min_sample*size/min_size), visual_result=False)
+                else:
+                    self.effective_small_area(data_key=data_key, threshold_map="NMF", eps=eps, min_sample=min_sample, visual_result=False)
+                    
+                self.small_area_investigation(visual_cluster=False, visual_dp=False, save=False, also_tiff=False, virtual_4D=virtual_4D)
+                
+                self.sub_clustered_lv.append(self.clustered_lv)
+                self.sub_centroid_lv.append(self.centroid_lv)
+                self.sub_boundary_lv.append(self.boundary_lv)
                 
                 datacube = []
                 lv_label = []
-                for lv in range(self.num_comp):
-                    label = [lv+1] * len(self.virtual_lv[lv])
-                    datacube.extend(self.virtual_lv[lv])
-                    lv_label.extend(label)
 
-                lv_label = np.asarray(lv_label)
-                datacube = np.asarray(datacube).reshape(-1, dp_shape[0], dp_shape[1])
+                if virtual_4D:
+                    for lv in range(self.num_comp):
+                        label = [lv+1] * len(self.virtual_lv[lv])
+                        lv_label.extend(label)
+                        if virtual_4D:
+                            datacube.extend(self.virtual_lv[lv])
 
-                for lv in range(self.num_comp):
-                    ind = np.where(lv_label == lv+1)[0]
-                    for k in ind:
-                        self.dp_storage['nominal_LV%d'%(lv+1)].append(datacube[k][crop_ind[0]:crop_ind[1], crop_ind[2]:crop_ind[3]])
+                    lv_label = np.asarray(lv_label)
+                    datacube = np.asarray(datacube).reshape(-1, dp_shape[0], dp_shape[1])
+                    for lv in range(self.num_comp):
+                        ind = np.where(lv_label == lv+1)[0]
+                        for k in ind:
+                            self.dp_storage['nominal_LV%d'%(lv+1)].append(datacube[k][crop_ind[0]:crop_ind[1], crop_ind[2]:crop_ind[3]])
                 
                 if visual:
                     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
@@ -1577,14 +1664,19 @@ class radial_profile_analysis():
 
                             inside_points.extend(self.boundary_lv[lv][l])
                             inside_points = np.asarray(inside_points).astype(int)
-                            if visual:
-                                ax.scatter(inside_points[:, 1], inside_points[:, 0], s=0.5, color=self.color_rep[lv+1], alpha=0.7)
                             
-                            self.num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
-                            self.mean_rvp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_var_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
-                            self.mean_edx['nominal_LV%d'%(lv+1)] += np.sum(self.edx_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
-                            self.data_num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
-                            self.data_pos_pixel['nominal_LV%d'%(lv+1)].append(inside_points.tolist())
+                            if cut_too_large != None and len(inside_points) > int(cut_too_large*size*(size-1)):
+                                self.data_pos_pixel['nominal_LV%d'%(lv+1)].append([])
+                            else:                           
+                                if visual:
+                                    ax.scatter(inside_points[:, 1], inside_points[:, 0], s=0.5, color=self.color_rep[lv+1], alpha=0.7)
+
+                                self.num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
+                                self.mean_rvp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_var_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                                self.mean_rmp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_avg_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                                self.mean_edx['nominal_LV%d'%(lv+1)] += np.sum(self.edx_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                                self.data_num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
+                                self.data_pos_pixel['nominal_LV%d'%(lv+1)].append(inside_points.tolist())
                         except:
                             self.data_pos_pixel['nominal_LV%d'%(lv+1)].append([])
                 
@@ -1602,7 +1694,9 @@ class radial_profile_analysis():
                 self.sub_pos_pixel.append(self.data_pos_pixel)        
             self.num_lv_pixel_split.append(self.sub_num_pixel)
             self.pos_lv_pixel_split.append(self.sub_pos_pixel)
-                        
+            self.clustered_lv_split.append(self.sub_clustered_lv)
+            self.centroid_lv_split.append(self.sub_centroid_lv)
+            self.boundary_lv_split.append(self.sub_boundary_lv)                       
             
     def scattering_range_of_interest(self, profile_type="variance", str_name=None, fill_width=0.1, height=None, width=None, threshold=None, distance=None, prominence=0.001):
 
@@ -2151,12 +2245,15 @@ class radial_profile_analysis():
                 count = count.tolist()
                 count_list.extend(count)
 
-        fig, ax = plt.subplots(1, 1, figsize=(6, 4), dpi=300)
-        ax.hist(count_list, color='k', bins=50)
-        ax.tick_params(axis="both", labelsize=12)
+        uq_count = np.unique(count_list)
+
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4), dpi = 300)
+        ax.hist(self.count_list, color='black', log=True, bins=len(uq_count))
+        ax.tick_params(axis="both", labelsize=15)
         fig.tight_layout()
         plt.show()
 
+        self.uq_count = uq_count
         self.count_list = count_list
 
 
@@ -2395,6 +2492,9 @@ class radial_profile_analysis():
                         if also_dp and len(np.nonzero(th_map)[0]) != 0:
                             if self.new_process_flag:
                                 dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                                if self.rebin_256:
+                                    if dataset.data.shape[1] > 250:
+                                        dataset = dataset.rebin(scale = (2,2,1,1))
                             else:      
                                 cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
                                 dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
@@ -2567,6 +2667,9 @@ class radial_profile_analysis():
                 if also_dp and len(np.nonzero(th_map)[0]) != 0:
                     if self.new_process_flag:
                         dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                        if self.rebin_256:
+                            if dataset.data.shape[1] > 250:
+                                dataset = dataset.rebin(scale = (2,2,1,1))
                     else:      
                         cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
                         dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
@@ -2692,7 +2795,7 @@ class radial_profile_analysis():
 # If you have any questions about it, please contact me by email (jinseok.ryu@diamond.ac.uk or jinseuk56@gmail.com)
 
 class drca():
-    def __init__(self, adr, dat_dim, dat_unit, cr_range=None, dat_scale=1, rescale=True, DM_file=True, verbose=True):
+    def __init__(self, adr, dat_dim, dat_unit, cr_range=None, dat_scale=1, rescale=True, DM_file=True, verbose=True, rebin_256=False):
 
         colors_yellows = [(1, 1, 1), (1, 1, 0.9), (1, 1, 0.7), (1, 1, 0.5), (0.9, 0.9, 0.3), (0.8, 0.8, 0.1)]
         cmap_yellows = mcolors.LinearSegmentedColormap.from_list("Yellows", colors_yellows)
@@ -2733,10 +2836,10 @@ class drca():
             self.num_dim = len(self.dat_dim_range)
         
         if dat_dim == 3:
-            self.data_storage, self.data_shape = data_load_3d(adr, cr_range, rescale, DM_file, verbose)
+            self.data_storage, self.data_shape = data_load_3d(adr, cr_range, rescale, DM_file, rebin_256, verbose)
         
         else:
-            self.data_storage, self.data_shape = data_load_4d(adr, rescale, verbose)
+            self.data_storage, self.data_shape = data_load_4d(adr, rescale, rebin_256, verbose)
             
         self.original_data_shape = self.data_shape.copy()
         
@@ -3511,7 +3614,7 @@ class drca():
 #####################################################
 # functions #
 #####################################################
-def data_load_3d(adr, crop=None, rescale=True, DM_file=True, verbose=True):
+def data_load_3d(adr, crop=None, rescale=True, DM_file=True, rebin_256=False, verbose=True):
     """
     load a spectrum image
     """
@@ -3523,6 +3626,8 @@ def data_load_3d(adr, crop=None, rescale=True, DM_file=True, verbose=True):
                 temp = hs.load(ad)
                 #print(temp.axes_manager)
                 temp = temp.isig[crop[0]:crop[1]]
+                if rebin_256 and temp.data.shape[1] > 250:
+                    temp = temp.rebin(scale=(2,2,1))
                 temp = temp.data
                 if rescale:
                     temp = temp/np.max(temp)
@@ -3553,11 +3658,14 @@ def data_load_3d(adr, crop=None, rescale=True, DM_file=True, verbose=True):
     shape = np.asarray(shape)
     return storage, shape
 
-def data_load_4d(adr, rescale=False, verbose=True):
+def data_load_4d(adr, rescale=False, rebin_256=False, verbose=True):
     storage = []
     shape = []   
     for i, ad in enumerate(adr):
-        tmp = tifffile.imread(ad)
+        tmp = hs.load(ad)
+        if rebin_256 and tmp.data.shape[1] > 250:
+            tmp = tmp.rebin(scale=(2,2,1,1))
+        tmp = tmp.data
         if rescale:
             tmp = tmp / np.max(tmp)
         if len(tmp.shape) == 3:
