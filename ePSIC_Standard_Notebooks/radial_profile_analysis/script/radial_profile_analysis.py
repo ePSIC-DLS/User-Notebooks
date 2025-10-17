@@ -22,7 +22,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.colors import hsv_to_rgb
 from sklearn.decomposition import NMF, PCA
 from sklearn.manifold import TSNE
-from sklearn.cluster import DBSCAN, HDBSCAN
+from sklearn.cluster import DBSCAN, HDBSCAN, OPTICS
 import ipywidgets as pyw
 import time
 
@@ -30,8 +30,7 @@ import time
 class radial_profile_analysis():
     def __init__(self, base_dir, subfolders, profile_length, num_load, final_dir=None,
                  include_key=None, exclude_key=None, specific_scan_shape=None,
-                 simult_edx=False, edx_key='', rebin_256=False,
-                 roll_axis=True, edx_crop=[0, 0], verbose=True):
+                 simult_edx=False, rebin_256=False, roll_axis=True, edx_crop=[0, 0], verbose=True, zernike=False):
         
         now = time.localtime()
         self.formatted = time.strftime("%Y%m%d_%H%M%S", now)
@@ -61,62 +60,28 @@ class radial_profile_analysis():
         pixel_size_split = []
         loaded_data_path = []
         loaded_edx_path = []
-
-        new_process_flag = True
         
         print(final_dir)
         
         for i, sub in enumerate(subfolders):
-            if final_dir == None or final_dir == [] or final_dir == '':  
-                if simult_edx:
-                    edx_adrs = glob.glob(base_dir+'/'+sub+'/*/*/EDX/*.rpl', recursive=True)
-                    if edx_adrs == []:
-                        edx_adrs = glob.glob(base_dir+'/'+sub+'/*/EDX/*.rpl', recursive=True)
-                        if edx_adrs == []:
-                            edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
-                            if edx_adrs == []:
-                                print("Please make sure that the base directory and subfolder name are correct.")
-                                return                
-
-                file_adrs = glob.glob(base_dir+'/'+sub+'/*/*/*.hspy', recursive=True)
+            if final_dir == None or final_dir == [] or final_dir == '': 
+                file_adrs = glob.glob(base_dir+'/'+sub+'/*/*_azimuthal_var.hspy', recursive=True)
                 if file_adrs == []:
-                    file_adrs = glob.glob(base_dir+'/'+sub+'/*/*.hspy', recursive=True)
-                    if file_adrs == []:
-                        file_adrs = glob.glob(base_dir+'/'+sub+'/*.hspy', recursive=True)
-                        if file_adrs == []:
-                            print("Please make sure that the base directory and subfolder name are correct.")
-                            return
+                    print("Please make sure that the base directory and subfolder name are correct.")
+                    return
                         
-            else:  
-                if simult_edx:
-                    edx_adrs = glob.glob(base_dir+'/'+sub+'/*/*/EDX/*.rpl', recursive=True)
-                    if edx_adrs == []:
-                        edx_adrs = glob.glob(base_dir+'/'+sub+'/*/EDX/*.rpl', recursive=True)
-                        if edx_adrs == []:
-                            edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
-                            if edx_adrs == []:
-                                print("Please make sure that the base directory and subfolder name are correct.")
-                                return                
-
-                file_adrs = glob.glob(base_dir+'/'+sub+'/*/%s/*.hspy'%final_dir, recursive=True)
+            else:             
+                file_adrs = glob.glob(base_dir+'/'+sub+'/*/%s/*_azimuthal_var.hspy'%final_dir, recursive=True)
                 if file_adrs == []:
-                    file_adrs = glob.glob(base_dir+'/'+sub+'/%s/*.hspy'%final_dir, recursive=True)
-                    if file_adrs == []:
-                        print("Please make sure that the base directory and subfolder name are correct.")
-                        return
+                    print("Please make sure that the base directory and subfolder name are correct.")
+                    return
             
             file_adrs.sort()
-            # print(*file_adrs, sep='\n')
-            try:
-                edx_adrs.sort()
 
-            except:
-                print("No EDX files")
-        
             if include_key == []:
                 key_list = []
+                edx_adrs = []
                 keyword_ = list(exclude_key)
-                keyword_.extend(["mean", "max", "bin", "map", 'corrected'])
                 for adr in file_adrs:
                     check = []
                     for key in keyword_:
@@ -124,13 +89,12 @@ class radial_profile_analysis():
                             check.append(1)
                     if check == []:
                         key_list.append(adr)
-                # print(*key_list, sep="\n")
+                        if simult_edx:
+                            datetime = adr.split('/')[-1][:15]
+                            edx_adrs.append(base_dir+'/'+sub+'/EDX/Map Data-Map Data - Site_%s.rpl'%datetime)
+                        
                 print(len(key_list))
                 key_list = np.asarray(key_list)
-
-                if simult_edx:
-                    edx_adrs = np.asarray(edx_adrs)
-                    edx_adrs = edx_adrs[:len(key_list)]
             
                 if len(key_list) > num_load:
                     ri = np.random.choice(len(key_list), num_load, replace=False)
@@ -144,8 +108,8 @@ class radial_profile_analysis():
         
             else:
                 key_list = []
+                edx_adrs = []
                 keyword_ = list(exclude_key)
-                keyword_.extend(["mean", "max", "bin", "map", 'corrected'])
                 for adr in file_adrs:
                     for key in include_key:
                         if key in adr:
@@ -154,9 +118,10 @@ class radial_profile_analysis():
                                 if key in adr:
                                     check.append(1)
                             if check == []:
-                                key_list.append(adr)                          
-                if simult_edx:
-                    edx_adr_ = edx_adrs
+                                key_list.append(adr)
+                                if simult_edx:
+                                    datetime = adr.split('/')[-1][:15]
+                                    edx_adrs.append(base_dir+'/'+sub+'/EDX/Map Data-Map Data - Site_%s.rpl'%datetime)
                     
                 if len(key_list) > num_load:
                     ri = np.random.choice(len(key_list), num_load, replace=False)
@@ -265,17 +230,13 @@ class radial_profile_analysis():
                 data_name = data_name[0]+'_'+data_name[1]
                 
                 try:
-                    adr_ = dir_path+"/"+data_name+"_"+'azimuthal_mean.hspy'
+                    adr_ = dir_path+"/"+data_name+"_azimuthal_mean.hspy"
                     data = hs.load(adr_)
+
                 except:
-                    try:
-                        adr_ = dir_path+"/"+data_name+"_"+'mean.hspy'
-                        data = hs.load(adr_)
-                        new_process_flag = False
-                    except:
-                        print('There is no mean profile data, so it will be replaced with variance profile data')
-                        adr_ = dir_path+"/"+data_name+"_"+'variance.hspy'
-                        data = hs.load(adr_)
+                    print('There is no mean profile data, so it will be replaced with variance profile data')
+                    adr_ = dir_path+"/"+data_name+"_variance.hspy"
+                    data = hs.load(adr_)
                         
                 if rebin_256:
                     if data.data.shape[1] > 250:
@@ -288,7 +249,6 @@ class radial_profile_analysis():
                 radial_avg_sum_list.append(local_radial_avg_sum.data)
 
             loaded_data_mean_path.append(loaded_data_mean)
-        
             radial_avg_split.append(radial_avg_list)
             radial_avg_sum_split.append(radial_avg_sum_list)
 
@@ -300,20 +260,53 @@ class radial_profile_analysis():
                 dir_path = os.path.dirname(adr)
                 data_name = os.path.basename(adr).split("_")
                 data_name = data_name[0]+'_'+data_name[1]
-                
-                try:
-                    adr_ = dir_path+"/"+data_name+"_"+'azimuthal_data_centre.png'
-                    data = plt.imread(adr_) 
-                except:
-                    adr_ = dir_path+"/"+"BF_disc_align_bvm.png"
-                    data = plt.imread(adr_) 
-                    new_process_flag = False
+
+                adr_ = dir_path+"/"+data_name+"_azimuthal_data_centre.png"
+                data = plt.imread(adr_) 
 
                 BF_disc_list.append(data)
             BF_disc_align.append(BF_disc_list)
+            
+        # load zernike
+        if zernike:
+            loaded_data_zernike_path = []
+            zernike_split = []
+            zernike_sum_split = []
+            for i, sub in enumerate(subfolders):
+                zernike_list = []
+                zernike_sum_list = []
+                loaded_data_zernike = []
+                for adr in loaded_data_path[i]:
+                    dir_path = os.path.dirname(adr)
+                    data_name = os.path.basename(adr).split("_")
+                    data_name = data_name[0]+'_'+data_name[1]
 
+                    adr_ = dir_path+"/"+data_name+"_zernike.hspy"
+                    data = hs.load(adr_)
+                    local_zernike_sum = data.mean()
+                    
+                    self.zernike_length = data.data.shape[2]
+
+                    if rebin_256:
+                        if data.data.shape[1] > 250:
+                            data = data.rebin(scale=(2,2,1))
+
+                    loaded_data_zernike.append(adr_)
+                    zernike_list.append(data)
+                    zernike_sum_list.append(local_zernike_sum.data)
+
+                loaded_data_zernike_path.append(loaded_data_zernike)
+                zernike_split.append(zernike_list)
+                zernike_sum_split.append(zernike_sum_list)          
+        
+
+        self.zernike = zernike
+        if zernike:
+            self.loaded_data_zernike_path = loaded_data_zernike_path
+            self.zernike_split = zernike_split
+            self.zernike_sum_split = zernike_sum_split
+            
         self.pixel_size_inv_Ang = pixel_size_split[0][0]
-
         self.base_dir = base_dir
         self.subfolders = subfolders
         self.profile_length = profile_length
@@ -327,7 +320,6 @@ class radial_profile_analysis():
         self.loaded_data_path = loaded_data_path
         self.loaded_data_mean_path = loaded_data_mean_path
         self.BF_disc_align = BF_disc_align
-        self.new_process_flag = new_process_flag
         self.simult_edx = simult_edx
         if simult_edx:
             self.loaded_edx_path = loaded_edx_path
@@ -590,16 +582,23 @@ class radial_profile_analysis():
         elif profile_type == "mean":
             for adrs in self.loaded_data_mean_path:
                 flat_adr.extend(adrs)
+        elif profile_type == "zernike":
+            for adrs in self.loaded_data_zernike_path:
+                flat_adr.extend(adrs)            
         else:
             print("Warning! wrong profile type!")
             return
-
-        if scale_crop:
-            self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_, self.to_, self.pixel_size_inv_Ang], 
+        
+        if profile_type == "zernike":
+            self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='index j', cr_range=[0, self.zernike_length, 1], 
                                     dat_scale=1, rescale=rescale_SI, DM_file=True, verbose=verbose, rebin_256=self.rebin_256)
         else:
-            self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_ind, self.to_ind, 1], 
-                                    dat_scale=self.pixel_size_inv_Ang, rescale=rescale_SI, DM_file=True, verbose=verbose, rebin_256=self.rebin_256)           
+            if scale_crop:
+                self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_, self.to_, self.pixel_size_inv_Ang], 
+                                        dat_scale=1, rescale=rescale_SI, DM_file=True, verbose=verbose, rebin_256=self.rebin_256)
+            else:
+                self.run_SI = drca(flat_adr, dat_dim=3, dat_unit='1/Å', cr_range=[self.from_ind, self.to_ind, 1], 
+                                        dat_scale=self.pixel_size_inv_Ang, rescale=rescale_SI, DM_file=True, verbose=verbose, rebin_256=self.rebin_256)           
 
         # NMF - prepare the input dataset
         self.run_SI.make_input(min_val=0.0, max_normalize=max_normalize, rescale_0to1=rescale_0to1)
@@ -613,7 +612,11 @@ class radial_profile_analysis():
         # Loading vectors
         fig, ax = plt.subplots(1, 1, figsize=(6, 4), dpi=300)
         for lv in range(self.num_comp):
-            ax.plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1], label="lv %d"%(lv+1))
+            if self.NMF_profile_type == "zernike":
+                ax.plot(self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1], label="lv %d"%(lv+1))
+            else:
+                ax.plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1], label="lv %d"%(lv+1))
+                
         ax.set_facecolor("lightgray")
         ax.legend(loc='upper right')
         fig.tight_layout()
@@ -750,14 +753,20 @@ class radial_profile_analysis():
         high_coeff_area_split = []
 
         for lv in range(self.num_comp):
-            lv_tot = np.zeros(self.profile_length)
+            if self.NMF_profile_type == 'zernike':
+                lv_tot = np.zeros(self.zernike_length)
+            else:
+                lv_tot = np.zeros(self.profile_length)
             total_num = 0
             coeff_lv = []
             thresh_coeff_lv = []
             high_coeff_area_lv = []
             lv_mean_lv = []
             fig_lv, ax_lv = plt.subplots(1, 3, figsize=(12, 4), dpi=300)
-            ax_lv[0].plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
+            if self.NMF_profile_type == 'zernike':
+                ax_lv[0].plot(self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
+            else:
+                ax_lv[0].plot(self.x_axis, self.run_SI.DR_comp_vectors[lv], self.color_rep[lv+1])
             ax_twin = ax_lv[0].twinx()
             if str_name != None and str_name != []:
                 for key in str_name:
@@ -771,7 +780,10 @@ class radial_profile_analysis():
 
             k=0
             for i in range(len(self.subfolders)):
-                lv_sub = np.zeros(self.profile_length)
+                if self.NMF_profile_type == 'zernike':
+                    lv_sub = np.zeros(self.zernike_length)
+                else:
+                    lv_sub = np.zeros(self.profile_length)
                 sub_num = 0
                 coeff = []
                 thresh_coeff = []
@@ -807,16 +819,25 @@ class radial_profile_analysis():
                         if self.NMF_profile_type == "variance":
                             coeff_rv = np.sum(self.radial_var_split[i][j].data[np.where(coeff_map==1)], axis=0)
                             coeff_mean = np.mean(self.radial_var_split[i][j].data[np.where(coeff_map==1)], axis=0)
-                        else:
+                        elif self.NMF_profile_type == "mean":
                             coeff_rv = np.sum(self.radial_avg_split[i][j].data[np.where(coeff_map==1)], axis=0)
-                            coeff_mean = np.mean(self.radial_avg_split[i][j].data[np.where(coeff_map==1)], axis=0)                            
+                            coeff_mean = np.mean(self.radial_avg_split[i][j].data[np.where(coeff_map==1)], axis=0)
+                        elif self.NMF_profile_type == "zernike":
+                            coeff_rv = np.sum(self.zernike_split[i][j].data[np.where(coeff_map==1)], axis=0)
+                            coeff_mean = np.mean(self.zernike_split[i][j].data[np.where(coeff_map==1)], axis=0)
+                        else:
+                            print("This does not support the current profile type %s"%self.NMF_profile_type)
+                            
                         lv_tot += coeff_rv
                         lv_sub += coeff_rv
 
                         lv_mean.append(coeff_mean)
                         
                         if visual_individual:
-                            ax.flat[j*2+1].plot(self.x_axis, coeff_mean[self.range_ind[0]:self.range_ind[1]], 'k-')
+                            if self.NMF_profile_type == "zernike":
+                                ax.flat[j*2+1].plot(coeff_mean, 'k-')
+                            else:
+                                ax.flat[j*2+1].plot(self.x_axis, coeff_mean[self.range_ind[0]:self.range_ind[1]], 'k-')
                             if axis_off:
                                 ax.flat[j*2+1].tick_params(axis="y", labelsize=0, color='white')
                             #ax.flat[j*2+1].set_ylim(0.0, ref_variance*1.5)
@@ -825,18 +846,28 @@ class radial_profile_analysis():
                             ax_lv_contri = ax.flat[j*2+1].twinx()
                             for lva in range(self.num_comp):
                                 mean_coeff = np.mean(self.run_SI.coeffs_reshape[k][:, :, lva][np.where(coeff_map==1)])
-                                ax_lv_contri.plot(self.x_axis, self.run_SI.DR_comp_vectors[lva]*mean_coeff, self.color_rep[lva+1], alpha=0.7)
+                                if self.NMF_profile_type == "zernike":
+                                    ax_lv_contri.plot(self.run_SI.DR_comp_vectors[lva]*mean_coeff, self.color_rep[lva+1], alpha=0.7)
+                                else:
+                                    ax_lv_contri.plot(self.x_axis, self.run_SI.DR_comp_vectors[lva]*mean_coeff, self.color_rep[lva+1], alpha=0.7)
                             if visual_title:
                                 ax.flat[j*2+1].set_title(os.path.basename(self.loaded_data_path[i][j])[:15], fontsize=title_font_size)
                             ax.flat[j*2+1].set_facecolor("lightgray")
                     else:
-                        lv_mean.append(np.zeros(self.profile_length))
+                        if self.NMF_profile_type == "zernike":
+                            lv_mean.append(np.zeros(self.zernike_length))
+                        else:
+                            lv_mean.append(np.zeros(self.profile_length))
                         
                     k+=1
                     
                 if sub_num != 0:
                     lv_sub /= sub_num
-                ax_sub_tot.plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], 'k-')
+                    
+                if self.NMF_profile_type == "zernike":
+                    ax_sub_tot.plot(lv_sub, 'k-')
+                else:
+                    ax_sub_tot.plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], 'k-')
                 ax_sub_tot.set_title("sum of profiles for all threshold maps - subfolder by subfolder")
                 ax_sub_twin = ax_sub_tot.twinx()
                 if str_name != None and str_name != []:
@@ -845,7 +876,10 @@ class radial_profile_analysis():
                     ax_sub_twin.legend(loc="right")
                 fig_sub_tot.tight_layout()
 
-                ax_lv[2].plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[i+1], label=self.subfolders[i])
+                if self.NMF_profile_type == "zernike":
+                    ax_lv[2].plot(lv_sub, c=self.color_rep[i+1], label=self.subfolders[i])
+                else:
+                    ax_lv[2].plot(self.x_axis, lv_sub[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[i+1], label=self.subfolders[i])
                 
                 if visual_individual:
                     fig.suptitle(self.subfolders[i]+' threshold coefficient map for loading vector %d'%(lv+1))
@@ -864,14 +898,21 @@ class radial_profile_analysis():
             if total_num != 0:
                 lv_tot /= total_num
             lv_line.append(lv_tot)
-            ax_lv[1].plot(self.x_axis, lv_tot[self.range_ind[0]:self.range_ind[1]], 'k-')
+            if self.NMF_profile_type == "zernike":
+                ax_lv[1].plot(lv_tot, 'k-')
+            else:
+                ax_lv[1].plot(self.x_axis, lv_tot[self.range_ind[0]:self.range_ind[1]], 'k-')
             ax_lv[1].set_title("sum of profiles for all threshold maps - loading vector %d"%(lv+1))
             ax_lv[2].legend()
             fig_lv.tight_layout()
 
         fig_tot, ax_tot = plt.subplots(1, 1, figsize=(6, 4), dpi=300)
         for l, line in enumerate(lv_line):
-            ax_tot.plot(self.x_axis, line[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[l+1], label='lv %d'%(l+1))
+            if self.NMF_profile_type == "zernike":
+                ax_tot.plot(line, c=self.color_rep[l+1], label='lv %d'%(l+1))
+            else:
+                ax_tot.plot(self.x_axis, line[self.range_ind[0]:self.range_ind[1]], c=self.color_rep[l+1], label='lv %d'%(l+1))
+                
         ax_tot.legend()
         fig_tot.suptitle("Compare the mean of radial profiles between loading vectors")
         fig_tot.tight_layout()
@@ -917,18 +958,10 @@ class radial_profile_analysis():
             num_img = len(self.radial_var_split[i])
             for j in range(num_img):
                 if also_dp:
-                    if self.new_process_flag:
-                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
-                        if self.rebin_256:
-                            if dataset.data.shape[1] > 250:
-                                dataset = dataset.rebin(scale = (2,2,1,1))
-                    else:      
-                        cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
-                        dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
-                        dataset = py4DSTEM.DataCube(dataset.data)
-                        #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
-                        dataset.calibration = cali.calibration
-                        dataset.calibrate()                    
+                    dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                    if self.rebin_256:
+                        if dataset.data.shape[1] > 250:
+                            dataset = dataset.rebin(scale = (2,2,1,1))             
                 
                 save_path = os.path.dirname(self.loaded_data_path[i][j]) # able to change the base directory for saving
                 print("save directory: ", save_path)
@@ -1087,18 +1120,10 @@ class radial_profile_analysis():
                 for key in specific_data:
                     if key in self.loaded_data_path[i][j]:
                         if also_dp:
-                            if self.new_process_flag:
-                                dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
-                                if self.rebin_256:
-                                    if dataset.data.shape[1] > 250:
-                                        dataset = dataset.rebin(scale = (2,2,1,1))
-                            else:      
-                                cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
-                                dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
-                                dataset = py4DSTEM.DataCube(dataset.data)
-                                #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
-                                dataset.calibration = cali.calibration
-                                dataset.calibrate()                    
+                            dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                            if self.rebin_256:
+                                if dataset.data.shape[1] > 250:
+                                    dataset = dataset.rebin(scale = (2,2,1,1))               
 
                         save_path = os.path.dirname(self.loaded_data_path[i][j]) # able to change the base directory for saving
                         print("save directory: ", save_path)
@@ -1321,18 +1346,10 @@ class radial_profile_analysis():
     def small_area_investigation(self, visual_cluster=True, visual_dp=False, log_dp=True, save=False, also_tiff=False, virtual_4D=False): 
         if self.threshold_map_small == 'NMF':
             if virtual_4D:
-                if self.new_process_flag:
-                    dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
-                    if self.rebin_256:
-                        if dataset.data.shape[1] > 250:
-                            dataset = dataset.rebin(scale = (2,2,1,1))
-                else:      
-                    cali = py4DSTEM.read(self.selected_data_path[:-13]+"braggdisks_cali.h5")
-                    dataset = py4DSTEM.read(self.selected_data_path[:-13]+"prepared_data.h5")
-                    dataset = py4DSTEM.DataCube(dataset.data)
-                    #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
-                    dataset.calibration = cali.calibration
-                    dataset.calibrate()
+                dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
+                if self.rebin_256:
+                    if dataset.data.shape[1] > 250:
+                        dataset = dataset.rebin(scale = (2,2,1,1))
 
             save_path = os.path.dirname(self.selected_data_path) # able to change the base directory for saving
             print("save directory: ", save_path)
@@ -1421,18 +1438,11 @@ class radial_profile_analysis():
 
         if self.threshold_map_small == 'variance':
             if virtual_4D:
-                if self.new_process_flag:
-                    dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
-                    if self.rebin_256:
-                        if dataset.data.shape[1] > 250:
-                            dataset = dataset.rebin(scale = (2,2,1,1))
-                else:      
-                    cali = py4DSTEM.read(self.selected_data_path[:-13]+"braggdisks_cali.h5")
-                    dataset = py4DSTEM.read(self.selected_data_path[:-13]+"prepared_data.h5")
-                    dataset = py4DSTEM.DataCube(dataset.data)
-                    #dataset = dataset.filter_hot_pixels(thresh=0.1, return_mask=False)
-                    dataset.calibration = cali.calibration
-                    dataset.calibrate()
+                dataset = hs.load(self.selected_data_path[:-18]+'corrected_scaled.hspy')
+                if self.rebin_256:
+                    if dataset.data.shape[1] > 250:
+                        dataset = dataset.rebin(scale = (2,2,1,1))
+
 
             save_path = os.path.dirname(self.selected_data_path) # able to change the base directory for saving
             print("save directory: ", save_path)
@@ -1563,7 +1573,16 @@ class radial_profile_analysis():
     def single_phase_investigation(self, visual=True, fig_save=False, dp_shape=[515, 515], crop_ind=[0, 515, 0, 515],
                                    eps=4.5, min_sample=30, virtual_4D=True, diff_size=False, size_list=None, cut_too_large=None):
         
-        
+        if self.simult_edx and self.edx_range_flag:    
+            self.mean_edx = {}
+            for i in range(self.num_comp):
+                self.mean_edx['nominal_LV%d'%(i+1)] = np.zeros(self.edx_dim)
+                
+        if self.zernike:
+            self.mean_zernike = {}
+            for i in range(self.num_comp):
+                self.mean_zernike['nominal_LV%d'%(i+1)] = np.zeros(self.zernike_length)
+                
         self.mean_rvp = {}
         for i in range(self.num_comp):
             self.mean_rvp['nominal_LV%d'%(i+1)] = np.zeros(self.profile_length)
@@ -1575,10 +1594,6 @@ class radial_profile_analysis():
         self.num_pixel = {}
         for i in range(self.num_comp):
             self.num_pixel['nominal_LV%d'%(i+1)] = 0
-
-        self.mean_edx = {}
-        for i in range(self.num_comp):
-            self.mean_edx['nominal_LV%d'%(i+1)] = np.zeros(self.edx_dim)
 
         self.dp_storage = {}
         for i in range(self.num_comp):
@@ -1669,12 +1684,17 @@ class radial_profile_analysis():
                                 self.data_pos_pixel['nominal_LV%d'%(lv+1)].append([])
                             else:                           
                                 if visual:
-                                    ax.scatter(inside_points[:, 1], inside_points[:, 0], s=0.5, color=self.color_rep[lv+1], alpha=0.7)
+                                    ax.scatter(inside_points[:, 1], inside_points[:, 0], s=0.5, color=self.color_rep[lv+1], alpha=0.5)
 
+                                if self.simult_edx and self.edx_range_flag: 
+                                    self.mean_edx['nominal_LV%d'%(lv+1)] += np.sum(self.edx_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                                    
+                                if self.zernike:
+                                    self.mean_zernike['nominal_LV%d'%(lv+1)] += np.sum(self.zernike_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
+                                    
                                 self.num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
                                 self.mean_rvp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_var_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
                                 self.mean_rmp['nominal_LV%d'%(lv+1)] += np.sum(self.radial_avg_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
-                                self.mean_edx['nominal_LV%d'%(lv+1)] += np.sum(self.edx_split[self.sub_ind][self.img_ind].data[inside_points[:, 0], inside_points[:, 1]], axis=0)
                                 self.data_num_pixel['nominal_LV%d'%(lv+1)] += len(inside_points)
                                 self.data_pos_pixel['nominal_LV%d'%(lv+1)].append(inside_points.tolist())
                         except:
@@ -1697,7 +1717,8 @@ class radial_profile_analysis():
             self.clustered_lv_split.append(self.sub_clustered_lv)
             self.centroid_lv_split.append(self.sub_centroid_lv)
             self.boundary_lv_split.append(self.sub_boundary_lv)                       
-            
+
+
     def scattering_range_of_interest(self, profile_type="variance", str_name=None, fill_width=0.1, height=None, width=None, threshold=None, distance=None, prominence=0.001):
 
         if width != None:
@@ -2184,6 +2205,13 @@ class radial_profile_analysis():
 
 
     def sum_edx(self, edx_from, edx_to, offset=0.0, edx_scale=0.01, total_edx=False, visual=True, visual_title=True, title_font_size=10, axis_off=True):
+        if self.simult_edx == False:
+            self.edx_range_flag = False
+            print("Warning! EDX data not loaded!")
+            return
+
+
+        self.edx_range_flag = True
         self.edx_dim = self.edx_split[0][0].data.shape[2]
         self.edx_range = np.linspace(0.0, self.edx_dim*edx_scale, self.edx_dim)
         self.edx_offset = offset
@@ -2236,6 +2264,10 @@ class radial_profile_analysis():
 
 
     def edx_count(self):
+        if self.simult_edx == False:
+            print("Warning! EDX data not loaded!")
+            return
+        
         count_list = []
         for i in range(len(self.subfolders)):
             for e in self.edx_split[i]:
@@ -2259,6 +2291,11 @@ class radial_profile_analysis():
 
     def edx_classification(self, threshold_map="NMF", visual_title=True, 
                            title_font_size=10, axis_off=True, visual_individual=True):
+        
+        if self.simult_edx == False:
+            print("Warning! EDX data not loaded!")
+            return
+
         if threshold_map == "variance":
             fig_tot, ax_tot = plt.subplots(1, 2, figsize=(16, 6), dpi=300)
             sp_tot = np.zeros_like(self.edx_range)
@@ -2490,18 +2527,11 @@ class radial_profile_analysis():
                         ax[1, 1].set_title('High-variance map\nabsolute threshold %.3f'%self.abs_threshold)
 
                         if also_dp and len(np.nonzero(th_map)[0]) != 0:
-                            if self.new_process_flag:
-                                dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
-                                if self.rebin_256:
-                                    if dataset.data.shape[1] > 250:
-                                        dataset = dataset.rebin(scale = (2,2,1,1))
-                            else:      
-                                cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
-                                dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
-                                dataset = py4DSTEM.DataCube(dataset.data)
-                                #dataset = dataset.filter_hot_pixels(thresh = 0.1, return_mask=False)
-                                dataset.calibration = cali.calibration
-                                dataset.calibrate()
+                            dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                            if self.rebin_256:
+                                if dataset.data.shape[1] > 250:
+                                    dataset = dataset.rebin(scale = (2,2,1,1))
+
 
                             mean_dp = np.mean(dataset.data[np.where(th_map==1)], axis=0)
                             mean_dps.append(np.sum(dataset.data[np.where(th_map==1)], axis=0))
@@ -2665,18 +2695,10 @@ class radial_profile_analysis():
                 ax[1, 1].set_title('High-variance map\nabsolute threshold %.3f'%self.abs_threshold)
 
                 if also_dp and len(np.nonzero(th_map)[0]) != 0:
-                    if self.new_process_flag:
-                        dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
-                        if self.rebin_256:
-                            if dataset.data.shape[1] > 250:
-                                dataset = dataset.rebin(scale = (2,2,1,1))
-                    else:      
-                        cali = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"braggdisks_cali.h5")
-                        dataset = py4DSTEM.read(self.loaded_data_path[i][j][:-13]+"prepared_data.h5")
-                        dataset = py4DSTEM.DataCube(dataset.data)
-                        #dataset = dataset.filter_hot_pixels(thresh = 0.1, return_mask=False)
-                        dataset.calibration = cali.calibration
-                        dataset.calibrate()
+                    dataset = hs.load(self.loaded_data_path[i][j][:-18]+'corrected_scaled.hspy')
+                    if self.rebin_256:
+                        if dataset.data.shape[1] > 250:
+                            dataset = dataset.rebin(scale = (2,2,1,1))
                         
                     mean_dp = np.mean(dataset.data[np.where(th_map==1)], axis=0)
                     mean_dps.append(np.sum(dataset.data[np.where(th_map==1)], axis=0))
@@ -2874,7 +2896,7 @@ class drca():
 
     def binning(self, bin_y, bin_x, str_y, str_x, offset=0, rescale_0to1=True):
         dataset = []
-        data_shape_new = []
+        data_shape_ = []
         
         for img in self.data_storage:
             print(img.shape)
