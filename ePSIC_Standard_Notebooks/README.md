@@ -1,6 +1,7 @@
 # Notice
 - This guide only applies if you're using the jupyterhub server of Diamond Light Source (DLS)
-- __The instruction here focuses mainly on data processing and analysis of scanning electron nannodiffraction (SEND) or nanobeam electron diffraction (NBD or NBED) four-dimensional scanning transmission electron microscopy (4DSTEM) data__
+- __It's always recommended to use the latest version of the code__
+- The instruction here focuses mainly on data processing and analysis of scanning electron nannodiffraction (SEND) or nanobeam electron diffraction (NBD or NBED) four-dimensional scanning transmission electron microscopy (4DSTEM) data
 - __The notebooks will submit jobs to DLS cluster nodes for data processing, so users must complete the ssh key setting__
 - The ipython notebooks or Python scripts should be modified if you want to perform them on your computer system
 - This workflow has been optimised for the Python kernel of 'epsic3.10'  
@@ -10,7 +11,6 @@
 - Please refer to the following article to see what you can do with 4DSTEM: [py4DSTEM: A Software Package for Four-Dimensional Scanning Transmission Electron Microscopy Data Analysis](https://dx.doi.org/10.1017/S1431927621000477)
 - [py4DSTEM](https://github.com/py4dstem/py4DSTEM) and [pyxem](https://github.com/pyxem/pyxem?tab=readme-ov-file) are very useful generally for 4DSTEM data processing and analysis
 - Please contact Jinseok Ryu, PhD (jinseok.ryu@diamond.ac.uk) if you have any questions about this workflow
-
 # MIB conversion
 - The format of raw 4DSTEM data is '.mib'
 - mib files must be converted into the 'hdf5' files using 'MIB_conversion/MIB_convert.ipynb'
@@ -38,7 +38,7 @@
 ![calibration](img/au_calibration.png)![calibration](img/au_calibration_json.png)
 - Please visit the following page for the details of this process: [py4DSTEM - Au calibration](https://github.com/ePSIC-DLS/Hyperspy_Workshop_2024/blob/main/py4DSTEM/orientation_01_AuAgPd_wire.ipynb)
 - The names of the session and the subfolder should be manually entered
-- After this process has been finished, it is recommended checking the quality of the process by looking inside the notebook ('submitted_notebook.nbconvert.ipynb') stored in the directory where the data is stored
+- After this process has been finished, the quality of the process must be confirmed by looking inside the notebook ('submitted_notebook.nbconvert.ipynb') stored in the directory where the data is stored
 - If the result of detecting a diffraction ring does not look accurate, try again after changing the value of 'q_range' or 'pixel_size_inv_Ang' in 'au_xgrating_cal_submit.ipynb'
 - Or you can manually run 'submitted_notebook.nbconvert.ipynb' for each calibration data to test a different 'q_range' or 'pixel_size_inv_Ang'  
 ![calibration](img/au_calibration_notebook.png)
@@ -60,8 +60,10 @@
 - The exact path of 'radial_profile_analysis/radial_profile_analysis.py' should be indicated in 'radial_profile_analysis/Run_radial_profile_analysis.ipynb'
 - One or many radial profile datasets can be loaded, and the sum of radial profiles can be seen for each 3D data
 - The feature extraction and classification of radially flattened profiles can be achieved using a dimensionality reduction method - non-negative matrix factorisation (NMF)
-- The EDX spectrum images acquired simultaneously with the SEND data can be also loaded and analysed by correlating with the data analysis result of radial profile datasets
+- The EDX spectrum images acquired simultaneously with the SEND data can be also loaded and analysed by correlating with the data analysis result of the radial profile dataset
+- (21/10/2025 update) It is highly recommended to use the latest version of the code for accurate file loading
 - For details on the simultaneous acquisition of 4DSTEM-EDX, please see this [manual](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/20250320_4DSTEM-EDX_Manual.pdf)  
 ![EDX](img/EDX_path.png) ![EDX](img/EDX_data.png)  
-*The EDX data should be stored as shown in the images above*
+*The EDX data must be stored as shown in the images above (~/subfolder/EDX/\*.rpl)*
 - Details can be found inside the notebook
+

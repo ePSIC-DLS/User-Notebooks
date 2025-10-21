@@ -75,12 +75,19 @@ class radial_profile_analysis():
                 if file_adrs == []:
                     print("Please make sure that the base directory and subfolder name are correct.")
                     return
+                
+            if simult_edx:
+                edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
+                edx_adrs.sort()
+                if file_adrs == []:
+                    print("Please make sure that the base directory and subfolder name are correct.")
+                    return                
             
             file_adrs.sort()
 
             if include_key == []:
                 key_list = []
-                edx_adrs = []
+                edx_adr = []
                 keyword_ = list(exclude_key)
                 for adr in file_adrs:
                     check = []
@@ -91,7 +98,10 @@ class radial_profile_analysis():
                         key_list.append(adr)
                         if simult_edx:
                             datetime = adr.split('/')[-1][:15]
-                            edx_adrs.append(base_dir+'/'+sub+'/EDX/Map Data-Map Data - Site_%s.rpl'%datetime)
+                            for adr in edx_adrs:
+                                if datetime in adr:
+                                    edx_adr.append(adr)
+                            
                         
                 print(len(key_list))
                 key_list = np.asarray(key_list)
@@ -108,7 +118,7 @@ class radial_profile_analysis():
         
             else:
                 key_list = []
-                edx_adrs = []
+                edx_adr = []
                 keyword_ = list(exclude_key)
                 for adr in file_adrs:
                     for key in include_key:
@@ -121,17 +131,19 @@ class radial_profile_analysis():
                                 key_list.append(adr)
                                 if simult_edx:
                                     datetime = adr.split('/')[-1][:15]
-                                    edx_adrs.append(base_dir+'/'+sub+'/EDX/Map Data-Map Data - Site_%s.rpl'%datetime)
+                                    for adr in edx_adrs:
+                                        if datetime in adr:
+                                            edx_adr.append(adr)
                     
                 if len(key_list) > num_load:
                     ri = np.random.choice(len(key_list), num_load, replace=False)
                     file_adr_ = key_list[ri]
                     if simult_edx:
-                        edx_adr_ = edx_adrs[ri]
+                        edx_adr_ = edx_adr[ri]
                 else:
                     file_adr_ = key_list
                     if simult_edx:
-                        edx_adr_ = edx_adrs                    
+                        edx_adr_ = edx_adr                  
                     
             print("number of data in subfolder '%s'"%sub)
             #print(*file_adr_, sep='\n')
