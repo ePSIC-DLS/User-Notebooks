@@ -1,6 +1,6 @@
 # Notice
 - This guide only applies if you're using the jupyterhub server of Diamond Light Source (DLS)
-- __It's always recommended to use the latest version of the code__
+- __It is always recommended to use the latest version of the code__
 - The instruction here focuses mainly on data processing and analysis of scanning electron nannodiffraction (SEND) or nanobeam electron diffraction (NBD or NBED) four-dimensional scanning transmission electron microscopy (4DSTEM) data
 - __The notebooks will submit jobs to DLS cluster nodes for data processing, so users must complete the ssh key setting__
 - The ipython notebooks or Python scripts should be modified if you want to perform them on your computer system
@@ -66,4 +66,5 @@
 ![EDX](img/EDX_path.png) ![EDX](img/EDX_data.png)  
 *The EDX data must be stored as shown in the images above (~/subfolder/EDX/\*.rpl)*
 - Details can be found inside the notebook
+
 
