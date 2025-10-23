@@ -79,7 +79,7 @@ class radial_profile_analysis():
             if simult_edx:
                 edx_adrs = glob.glob(base_dir+'/'+sub+'/EDX/*.rpl', recursive=True)
                 edx_adrs.sort()
-                if file_adrs == []:
+                if edx_adrs == []:
                     print("Please make sure that the base directory and subfolder name are correct.")
                     return                
             
@@ -105,16 +105,19 @@ class radial_profile_analysis():
                         
                 print(len(key_list))
                 key_list = np.asarray(key_list)
+                edx_adr = np.asarray(edx_adr)
             
                 if len(key_list) > num_load:
                     ri = np.random.choice(len(key_list), num_load, replace=False)
                     file_adr_ = key_list[ri]
                     if simult_edx:
-                        edx_adr_ = edx_adrs[ri]
+                        # print(key_list)
+                        # print(edx_adr)
+                        edx_adr_ = edx_adr[ri]
                 else:
                     file_adr_ = key_list
                     if simult_edx:
-                        edx_adr_ = edx_adrs
+                        edx_adr_ = edx_adr
         
             else:
                 key_list = []
@@ -134,11 +137,16 @@ class radial_profile_analysis():
                                     for adr in edx_adrs:
                                         if datetime in adr:
                                             edx_adr.append(adr)
-                    
+                
+                print(len(key_list))
+                edx_adr = np.asarray(edx_adr)
+                key_list = np.asarray(key_list)
+                
                 if len(key_list) > num_load:
                     ri = np.random.choice(len(key_list), num_load, replace=False)
                     file_adr_ = key_list[ri]
                     if simult_edx:
+                        # print(edx_adr)
                         edx_adr_ = edx_adr[ri]
                 else:
                     file_adr_ = key_list
@@ -213,7 +221,8 @@ class radial_profile_analysis():
                 pixel_size_list.append(pixel_size_inv_Ang)
                 if simult_edx:
                     edx_tmp_list.append(edx_data)
-                    edx_avg_list.append(edx_data.mean().data)                    
+                    edx_avg_list.append(edx_data.mean().data)
+                    
         
             avg_radial_var_list = np.asarray(avg_radial_var_list)
             radial_var_split.append(radial_var_list)
