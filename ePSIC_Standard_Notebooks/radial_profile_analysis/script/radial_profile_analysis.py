@@ -9,7 +9,10 @@ from scipy.ndimage import gaussian_filter
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-plt.rcParams['font.family'] = 'Nimbus Roman'
+try:
+    plt.rcParams['font.family'] = 'Nimbus Roman' # for Linux
+except:
+    plt.rcParams['font.family'] = 'Times New Roman' # for Windows
 
 import py4DSTEM
 import hyperspy.api as hs
@@ -29,8 +32,8 @@ import time
 
 class radial_profile_analysis():
     def __init__(self, base_dir, subfolders, profile_length, num_load, final_dir=None,
-                 include_key=None, exclude_key=None, specific_scan_shape=None,
-                 simult_edx=False, rebin_256=False, roll_axis=True, edx_crop=[0, 0], verbose=True, zernike=False):
+                 include_key=None, exclude_key=None, simult_edx=False, rebin_256=False, roll_axis=True, 
+                 verbose=True, zernike=False):
         
         now = time.localtime()
         self.formatted = time.strftime("%Y%m%d_%H%M%S", now)
@@ -97,6 +100,7 @@ class radial_profile_analysis():
                     if check == []:
                         key_list.append(adr)
                         if simult_edx:
+                            adr = adr.replace('\\', '/') # for Windows OS
                             datetime = adr.split('/')[-1][:15]
                             for adr in edx_adrs:
                                 if datetime in adr:
@@ -133,6 +137,7 @@ class radial_profile_analysis():
                             if check == []:
                                 key_list.append(adr)
                                 if simult_edx:
+                                    adr = adr.replace('\\', '/') # for Windows OS
                                     datetime = adr.split('/')[-1][:15]
                                     for adr in edx_adrs:
                                         if datetime in adr:
@@ -175,9 +180,6 @@ class radial_profile_analysis():
             for e, adr in enumerate(file_adr_):
                 data = hs.load(adr)
                 print('original profile size = ', data.data.shape[-1])
-                if specific_scan_shape != []:
-                    if data.data.shape[:2] != tuple(specific_scan_shape):
-                        continue
                         
                 if rebin_256:
                     if data.data.shape[1] > 250:

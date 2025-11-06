@@ -56,13 +56,14 @@
 ![transformation](img/radial_files.png)
 - Please visit the following page for the details of this process: [py4DSTEM - polar transform](https://github.com/py4dstem/py4DSTEM/blob/dev/py4DSTEM/process/polar/polar_analysis.py)
 - This process may be helpful for structure characterisation of amorphous/polycrystalline/mixed-phase materials
+- If the transformation results look incorrect, run the transformation again after disabling the 'fast origin' or 'fast centre finding' setting
 # Data analysis for radial profile datasets
 - The exact path of 'radial_profile_analysis/radial_profile_analysis.py' should be indicated in 'radial_profile_analysis/Run_radial_profile_analysis.ipynb'
 - One or many radial profile datasets can be loaded, and the sum of radial profiles can be seen for each 3D data
 - The feature extraction and classification of radially flattened profiles can be achieved using a dimensionality reduction method - non-negative matrix factorisation (NMF)
 - The EDX spectrum images acquired simultaneously with the SEND data can be also loaded and analysed by correlating with the data analysis result of the radial profile dataset
 - (21/10/2025 update) It is highly recommended to use the latest version of the code for accurate file loading
-- For details on the simultaneous acquisition of 4DSTEM-EDX, please see this [manual](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/20250320_4DSTEM-EDX_Manual.pdf)  
+- For details on the simultaneous acquisition of 4DSTEM-EDX, please see this [manual](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/20251106_4DSTEM-EDX_Manual.pdf)  
 ![EDX](img/EDX_path.png) ![EDX](img/EDX_data.png)  
 *The EDX data must be stored as shown in the images above (~/subfolder/EDX/\*.rpl)*
 - Details can be found inside the notebook
