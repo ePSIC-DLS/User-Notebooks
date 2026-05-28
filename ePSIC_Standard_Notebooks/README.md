@@ -10,7 +10,7 @@
 - This guide only deals with data acquired using E02 (Grand ARM300CF; JEOL, MerlinEM; Quantum Detectors, Aztec; Oxford Instruments)
 - Please refer to the following article to see what you can do with 4DSTEM: [py4DSTEM: A Software Package for Four-Dimensional Scanning Transmission Electron Microscopy Data Analysis](https://dx.doi.org/10.1017/S1431927621000477)
 - [py4DSTEM](https://github.com/py4dstem/py4DSTEM) and [pyxem](https://github.com/pyxem/pyxem?tab=readme-ov-file) are very useful generally for 4DSTEM data processing and analysis
-- Please contact Jinseok Ryu, PhD (jinseok.ryu@diamond.ac.uk) if you have any questions about this workflow
+- Please contact Jinseok Ryu, PhD (jinseuk56@gmail.com) if you have any questions about this workflow
 # MIB conversion
 - The format of raw 4DSTEM data is '.mib'
 - mib files must be converted into the 'hdf5' files using 'MIB_conversion/MIB_convert.ipynb'
@@ -57,15 +57,3 @@
 - Please visit the following page for the details of this process: [py4DSTEM - polar transform](https://github.com/py4dstem/py4DSTEM/blob/dev/py4DSTEM/process/polar/polar_analysis.py)
 - This process may be helpful for structure characterisation of amorphous/polycrystalline/mixed-phase materials
 - If the transformation results look incorrect, run the transformation again after disabling the 'fast origin' or 'fast centre finding' setting
-# Data analysis for radial profile datasets
-- The exact path of 'radial_profile_analysis/radial_profile_analysis.py' should be indicated in 'radial_profile_analysis/Run_radial_profile_analysis.ipynb'
-- One or many radial profile datasets can be loaded, and the sum of radial profiles can be seen for each 3D data
-- The feature extraction and classification of radially flattened profiles can be achieved using a dimensionality reduction method - non-negative matrix factorisation (NMF)
-- The EDX spectrum images acquired simultaneously with the SEND data can be also loaded and analysed by correlating with the data analysis result of the radial profile dataset
-- (21/10/2025 update) It is highly recommended to use the latest version of the code for accurate file loading
-- For details on the simultaneous acquisition of 4DSTEM-EDX, please see this [manual](https://github.com/jinseuk56/User-Notebooks/blob/master/ePSIC_Standard_Notebooks/20251106_4DSTEM-EDX_Manual.pdf)  
-![EDX](img/EDX_path.png) ![EDX](img/EDX_data.png)  
-*The EDX data must be stored as shown in the images above (~/subfolder/EDX/\*.rpl)*
-- Details can be found inside the notebook
-
-
