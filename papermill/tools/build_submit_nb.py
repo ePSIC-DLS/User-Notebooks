@@ -1,52 +1,19 @@
-"""Build Submit_papermill_array.ipynb: batch submission of a papermill notebook as a SLURM array."""
+"""Build the SLURM array submission notebook for a papermill template.
+
+    python build_submit_nb.py ../Submit_papermill_array.ipynb              # azimuthal variance
+    python build_submit_nb.py ../Submit_papermill_array_EELS.ipynb eels    # Gatan multiframe EELS
+"""
 import sys
 import nbformat
 from nbformat.v4 import new_notebook, new_markdown_cell, new_code_cell
 
 cells = []
 
+VARIANT = sys.argv[2] if len(sys.argv) > 2 else "azimuthal"
+if VARIANT not in ("azimuthal", "eels"):
+    raise SystemExit("variant must be 'azimuthal' or 'eels'")
 
-def new_batch_only(src, when_checking):
-    # wrap a cell so it only runs when writing a new batch, not when checking an existing one
-    body = "\n".join(("    " + l) if l.strip() else l for l in src.strip("\n").splitlines())
-    return f"if check_batch:\n    {when_checking}\nelse:\n{body}\n"
-
-md = lambda s: cells.append(new_markdown_cell(s.strip("\n")))
-code = lambda s, tags=None: cells.append(
-    new_code_cell(s.strip("\n"), metadata={"tags": tags} if tags else {})
-)
-
-md(r"""
-# Run a papermill notebook over many datasets as a SLURM array job
-
-In this notebook one can:
-- check the batch settings against the parameters the template notebook accepts
-- find the datasets to process (skipping those already finished)
-- write one parameter file per dataset and a SLURM array script
-- submit it, then follow the jobs and collect which datasets succeeded or failed
-
-Each array task runs
-
-    python -m papermill <template snapshot> <results folder>/<template name>_<dataset id>.ipynb -f <params>.json
-
-It works with any template that takes `raw_data_path` and `outpath` parameters and writes a
-file when it has finished (`done_file`): presets for the azimuthal variance and the Gatan
-multiframe EELS notebooks are in the settings cell.
-
-(the output name and folder are set in the settings), so every executed notebook keeps its own parameters, and a failing notebook makes its SLURM task fail.
-
-Everything for one batch (template snapshot, parameter files, job list, script, logs) goes in
-`<code_path>/<batch id>`, so later edits to the template do not change jobs already queued.
-
-Run the cells top to bottom. Nothing is submitted until `submit = True`.
-
-To come back to a batch later (after a kernel restart, say), set `check_batch` to its batch id and run
-from the top again: the batch is reloaded instead of a new one being written or submitted.
-""")
-
-md("## Settings")
-
-code(r"""
+AZIMUTHAL_SETTINGS = r"""
 # --- template and where the batch files go
 template_notebook = '/dls/e02/data/2026/mg44469-1/processing/Azimuthal_variance.ipynb'
 code_path = '/dls/e02/data/2026/mg44469-1/processing/variance_batches'
@@ -97,7 +64,59 @@ submit = False  # set True to submit; False writes everything but does not submi
 # to follow / check a batch written earlier (e.g. after a kernel restart), give its batch id here,
 # e.g. '20261016_144039'. Nothing new is written or submitted.
 check_batch = ''
-""", tags=["parameters"])
+"""
+
+EELS_SETTINGS = open(__file__.replace("build_submit_nb.py", "eels_settings.py"), encoding="utf-8").read()
+EELS_RESOLVE = open(__file__.replace("build_submit_nb.py", "eels_resolve.py"), encoding="utf-8").read()
+
+SETTINGS = EELS_SETTINGS if VARIANT == "eels" else AZIMUTHAL_SETTINGS
+WHAT = ("Gatan multiframe EELS (`EELS_insitu_processing.ipynb`): the datasets are the folders in "
+        "`<visit>/raw/<sample>`, the results go to `<visit>/processing/<sample>/<dataset>`"
+        if VARIANT == "eels" else
+        "azimuthal variance of Merlin NBED data (`Azimuthal_variance.ipynb`)")
+INTRO_TITLE = ("\n# Gatan multiframe EELS over many datasets as a SLURM array job\n" if VARIANT == "eels"
+               else "\n# Run a papermill notebook over many datasets as a SLURM array job\n")
+
+
+def new_batch_only(src, when_checking):
+    # wrap a cell so it only runs when writing a new batch, not when checking an existing one
+    body = "\n".join(("    " + l) if l.strip() else l for l in src.strip("\n").splitlines())
+    return f"if check_batch:\n    {when_checking}\nelse:\n{body}\n"
+
+md = lambda s: cells.append(new_markdown_cell(s.strip("\n")))
+code = lambda s, tags=None: cells.append(
+    new_code_cell(s.strip("\n"), metadata={"tags": tags} if tags else {})
+)
+
+md(INTRO_TITLE + r"""
+
+In this notebook one can:
+- check the batch settings against the parameters the template notebook accepts
+- find the datasets to process (skipping those already finished)
+- write one parameter file per dataset and a SLURM array script
+- submit it, then follow the jobs and collect which datasets succeeded or failed
+
+Each array task runs
+
+    python -m papermill <template snapshot> <results folder>/<template name>_<dataset id>.ipynb -f <params>.json
+
+so every executed notebook keeps its own parameters, and a failing notebook makes its SLURM task fail.
+
+It works with any template that takes `raw_data_path` and `outpath` parameters and writes a
+file when it has finished (`done_file`). This copy is set up for {WHAT}.
+
+Everything for one batch (template snapshot, parameter files, job list, script, logs) goes in
+`<code_path>/<batch id>`, so later edits to the template do not change jobs already queued.
+
+Run the cells top to bottom. Nothing is submitted until `submit = True`.
+
+To come back to a batch later (after a kernel restart, say), set `check_batch` to its batch id and run
+from the top again: the batch is reloaded instead of a new one being written or submitted.
+""".replace("{WHAT}", WHAT))
+
+md("## Settings")
+
+code(SETTINGS, tags=["parameters"])
 
 code(r"""
 import os
@@ -120,19 +139,47 @@ if check_batch.isdigit() and len(check_batch) == 14:
     check_batch = check_batch[:8] + '_' + check_batch[8:]
 """)
 
+if VARIANT == "eels":
+    md("## Fill in the paths derived from the visit and sample, and check `code_dir`")
+    code(EELS_RESOLVE)
+
 md("## Check the settings against the template's parameters\n\nCatches misspelt parameter names, which papermill would otherwise inject silently and the template would ignore.")
 
 code(r"""
 template_params = pm.inspect_notebook(template_notebook)
 template_stem = os.path.splitext(os.path.basename(template_notebook))[0]
-print(f'{len(template_params)} parameters in {template_notebook}:')
-for name, p in template_params.items():
-    print(f"  {name:36s} {p['default']}")
 
 batch_controlled = {'raw_data_path', 'outpath'}  # set per dataset below
-requested = set(common_parameters)
+per_dataset_keys = set()
 for overrides in per_dataset_parameters.values():
-    requested |= set(overrides)
+    per_dataset_keys |= set(overrides)
+requested = set(common_parameters) | per_dataset_keys
+
+# Show the template's parameters grouped by who decides them, so it is obvious
+# which of these settings reach the notebook and which are batch plumbing.
+print(f'{len(template_params)} parameters in {template_notebook}\n')
+groups = [
+    ('set for every dataset (common_parameters)',
+     [n for n in template_params if n in common_parameters]),
+    ('set per dataset (per_dataset_parameters)',
+     [n for n in template_params if n in per_dataset_keys and n not in common_parameters]),
+    ('filled in by this notebook, per dataset',
+     [n for n in template_params if n in batch_controlled]),
+    ("left at the template's default",
+     [n for n in template_params if n not in requested and n not in batch_controlled]),
+]
+for title, names in groups:
+    if not names:
+        continue
+    print(f'  {title}:')
+    for name in names:
+        value = common_parameters.get(name, template_params[name]['default'])
+        note = ''
+        if name in per_dataset_keys:
+            note = '   <- overridden for: ' + ', '.join(
+                sorted(k for k, v in per_dataset_parameters.items() if name in v))
+        print(f'    {name:28s} {value!r}{note}')
+    print()
 
 unknown = sorted(requested - set(template_params))
 if unknown:
@@ -142,7 +189,7 @@ if unknown:
 clash = sorted(requested & batch_controlled)
 if clash:
     raise KeyError(f'{clash} are set per dataset by this notebook; do not set them here')
-print('\nsettings OK')
+print('settings OK')
 """)
 
 md("## Find the datasets")
@@ -160,7 +207,7 @@ data_files = sorted({os.path.dirname(m) if dataset_is == 'parent' else m for m i
 print(f'{len(data_files)} datasets found')
 
 def time_stamp_of(path):
-    # the dataset id: e.g. '20260909_131114' (timestamp rule of the azimuthal template) or 'InSitu (5)'
+    # the dataset id: 'timestamp' gives e.g. '20260909_131114', 'name' gives e.g. 'InSitu (5)'
     name = os.path.basename(os.path.normpath(path))
     return name[:15] if dataset_id == 'timestamp' else name
 

@@ -38,6 +38,45 @@ ni.compute()                                      # ~1.5 s, reads 18% of the fil
 Run `python load_insitu_demo.py "<folder>"` for a worked example with timings,
 or open **`gatan_insitu_example.ipynb`** for the notebook walkthrough.
 
+### Working with a dataset you did not plan for
+
+Which detector ran alongside the spectrometer changes between sessions, and a
+dataset can carry an EDS spectrum image or derived maps next to the EELS. So
+nothing tests for the string `HAADF`:
+
+```python
+gi.image_streams(signals)        # ['ADF Image', 'Correlation Coefficient', ...]
+                                 # detector-like names first, whatever they are called
+gi.classify_signals(signals)     # (spectra, series, stills, other)
+gi.make_navigator(hl, image=signals[gi.image_streams(signals)[0]])
+```
+
+`classify_signals` splits on **navigation** dimension, not signal dimension.
+That distinction is what `quicklook` got wrong: an EDS or EELS spectrum image
+in its native `(time, E | x, y)` layout has a 2D *signal* exactly like an image
+series, but two navigation axes, so `data[0]` is a stack and `imshow` raised
+`TypeError: Invalid shape (2048, 78, 92) for image data`. Such streams are now
+listed as "not shown" instead of crashing the figure, and `quicklook` takes
+`images=[...]` if you want to choose.
+
+### Watching the series, and dropping damaged frames
+
+```python
+gi.save_frame_gif(signals["ADF Image"], out / "frames.gif", fps=5)
+keep = gi.frame_range(n_frames, start=2, stop=38)     # stop=0 means to the end
+```
+
+`save_frame_gif` burns the frame number and time into each frame — an animation
+with nothing written on it cannot be referred to, and the number is exactly
+what you need to set the range. Contrast limits come from percentiles of the
+**whole series**, so the brightness does not flicker and real dimming still
+shows; `scale_per_frame=True` if you would rather see faint detail.
+
+`frame_range` resolves `start`/`stop` (negatives count from the end, `stop=0`
+means to the end) into the frames everything downstream should use. The
+workflow writes the GIF from *every* loaded frame and applies the range
+afterwards, so you can see what you are cutting before you cut it.
+
 ### Notebook helpers
 
 ```python
@@ -239,6 +278,57 @@ Thresholds are recomputed per frame (multi-Otsu by default), which absorbs
 drift in beam current or detector gain. `method="manual"` takes your own,
 `threshold_smoothing=N` median-filters them over time to steady a jittery
 series.
+
+### Regions defined by proximity, not brightness
+
+"The support next to the particles" is not an intensity class — it looks
+exactly like support everywhere else — so thresholding cannot find it.
+`distance_bands` defines it geometrically. For particles on a support, the
+three labels you usually want:
+
+```python
+fine = gi.segment_frames(haadf, n_classes=3,
+                         labels=["vacuum", "C support", "Ru"])
+bands = gi.distance_bands(
+    fine, around="Ru", edges=[0, 1.0], within="C support",
+    labels=["Ru", "near Ru", "far support"],
+)                       # + an 'outside' class for the vacuum
+masks = gi.rebin_masks(bands, target_shape=hl.data.shape[1:3])
+spectra = gi.masked_spectra(hl, masks, mode="mean")
+```
+
+Distances come from a Euclidean transform, so each pixel is measured to its
+**nearest** particle: shells around neighbouring particles meet rather than
+overlap, and no pixel is counted twice. `edges` is read in the mask axes' own
+units, so `[0, 1.0]` means 1 nm, not 1 pixel.
+
+Three details that matter:
+
+- **`within` keeps the shell on the support.** Without it, a shell around a
+  particle at the edge of a flake runs out into vacuum and dilutes the
+  spectrum with nothing. Pixels outside it become an explicit `outside` class
+  rather than being folded into `rest` (which would contaminate the
+  far-support spectrum) or silently dropped.
+- **Band before `rebin_masks`.** A 1 nm shell is 31 full-resolution HAADF
+  pixels but only 8 SI pixels; banding after reducing quantises it badly.
+- **Run it after frame alignment** (`align_frames`), so the bands are cut on
+  a registered stack.
+
+More edges give a profile away from the surface rather than one shell —
+`edges=[0, 0.5, 1.0, 1.5, 2.0, 3.0]` returns five rings, each its own
+spectrum. On the Au/NiO data:
+
+| region | px/frame | Ni L | O K | O/Ni |
+|---|---|---|---|---|
+| particle | 702 | 0.0640 | 0.1381 | 2.16 |
+| near (0–1 nm) | 1610 | 0.0810 | 0.1515 | 1.87 |
+| far support | 734 | 0.0980 | 0.1831 | 1.87 |
+
+`erode_masks` is the companion control: if a region's signal is really
+spillover from its neighbour, shrinking the mask away from the boundary drains
+it. Both test lateral mixing only — EELS integrates along the beam, so a
+region defined on a projected image can still contain a different phase above
+or below it, and no amount of eroding or banding will reveal that.
 
 ### Check the labels before you trust them
 

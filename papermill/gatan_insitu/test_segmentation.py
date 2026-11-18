@@ -282,6 +282,92 @@ def main():
           core_after > 0.9 * core_before,
           f"{core_before:.3f} -> {core_after:.3f}")
 
+    print("\nbanding the field by distance from a class:")
+    from .segmentation import MaskStack, distance_bands
+
+    # Two discs on a support, with vacuum around it -- the Ru-on-carbon case.
+    size, radius, width = 120, 10, 6
+    yy, xx = np.mgrid[0:size, 0:size]
+    support = (yy > 15) & (yy < 105) & (xx > 15) & (xx < 105)
+    discs = (((yy - 45) ** 2 + (xx - 40) ** 2 < radius**2)
+             | ((yy - 75) ** 2 + (xx - 80) ** 2 < radius**2))
+    truth = np.zeros((2, size, size), dtype=np.uint8)
+    truth[:, support] = 1
+    truth[:, discs] = 2
+    plain = MaskStack(
+        masks=np.stack([truth == k for k in range(3)], axis=1),
+        labels=["vacuum", "support", "particle"],
+        thresholds=np.zeros((2, 2)),
+        nav_axes=[{"name": "y", "units": "nm", "scale": 1.0},
+                  {"name": "x", "units": "nm", "scale": 1.0}],
+    )
+
+    banded = distance_bands(plain, "particle", [0, width], within="support",
+                            labels=["particle", "near", "far"])
+    check("banding gives source + bands + rest + outside",
+          banded.labels == ["particle", "near", "far", "outside"],
+          str(banded.labels))
+    check("bands tile the frame", bool(np.all(banded.masks.sum(axis=1) == 1)))
+    check("vacuum is kept out of 'far', in its own class",
+          not (banded.masks[:, 2] & ~plain.masks[:, 1]).any()
+          and banded.areas[0, 3] == plain.areas[0, 0],
+          f"outside = {banded.areas[0, 3]} px, vacuum = {plain.areas[0, 0]} px")
+    check("the particle class is untouched",
+          np.array_equal(banded.masks[:, 0], plain.masks[:, 2]))
+
+    expected = 2 * np.pi * ((radius + width) ** 2 - radius**2)
+    got = banded.areas[0, 1]
+    check("shell area matches the annulus it should be",
+          abs(got - expected) / expected < 0.08,
+          f"{got} px against {expected:.0f} px for two r={radius} discs, "
+          f"{width} px shells")
+
+    check("the shell never leaves the support",
+          not (banded.masks[:, 1] & ~plain.masks[:, 1]).any())
+    check("no pixel is in two bands (shells meet, they do not overlap)",
+          bool(np.all(banded.masks.sum(axis=1) <= 1)))
+
+    # Physical units: the same shell asked for in nm on a 0.5 nm pixel.
+    half = MaskStack(masks=plain.masks, labels=plain.labels,
+                     thresholds=plain.thresholds,
+                     nav_axes=[{"name": "y", "units": "nm", "scale": 0.5},
+                               {"name": "x", "units": "nm", "scale": 0.5}])
+    in_nm = distance_bands(half, "particle", [0, width * 0.5], within="support",
+                           labels=["particle", "near", "far"])
+    check("edges are read in the axes' units, not pixels",
+          in_nm.areas[0, 1] == banded.areas[0, 1],
+          f"{in_nm.areas[0, 1]} px for {width * 0.5} nm at 0.5 nm/px")
+
+    rings = distance_bands(plain, "particle", [0, 3, 6, 12], within="support")
+    check("several rings are produced, each further out",
+          rings.labels == ["particle", "0-3", "3-6", "6-12", "rest", "outside"]
+          and rings.areas[0, 1] < rings.areas[0, 2] < rings.areas[0, 3],
+          f"{rings.labels} areas {rings.areas[0].tolist()}")
+    # Rings around a disc of radius r, not around a point: the 3-6 ring is
+    # ((r+6)^2 - (r+3)^2) / ((r+3)^2 - r^2) times the 0-3 ring.
+    predicted = (((radius + 6) ** 2 - (radius + 3) ** 2)
+                 / ((radius + 3) ** 2 - radius**2))
+    measured = rings.areas[0, 2] / rings.areas[0, 1]
+    check("ring areas follow the annulus-around-a-disc formula",
+          abs(measured - predicted) / predicted < 0.1,
+          f"3-6 / 0-3 = {measured:.2f} against {predicted:.2f} predicted")
+
+    empty = MaskStack(
+        masks=np.stack([np.ones((2, size, size), bool),
+                        np.zeros((2, size, size), bool),
+                        np.zeros((2, size, size), bool)], axis=1),
+        labels=["vacuum", "support", "particle"], thresholds=np.zeros((2, 2)))
+    quiet = distance_bands(empty, "particle", [0, 5])
+    check("a frame with no particles gives empty bands, not a crash",
+          quiet.areas[0, 1] == 0, f"{quiet.areas[0].tolist()}")
+
+    for bad, why in (([1, 5], "must start at 0"), ([0, 5, 3], "must increase")):
+        try:
+            distance_bands(plain, "particle", bad)
+            check(f"edges {bad} refused ({why})", False)
+        except ValueError:
+            check(f"edges {bad} refused ({why})", True)
+
     print(f"\n{sum(_results)}/{len(_results)} checks passed")
     return 0 if all(_results) else 1
 

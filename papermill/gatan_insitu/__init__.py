@@ -21,12 +21,22 @@ from .loader import (
     load_insitu_signal,
     save_rechunked,
 )
-from .notebook import computed, make_navigator, quicklook, summary_table
+from .notebook import (
+    classify_signals,
+    computed,
+    frame_range,
+    image_streams,
+    save_frame_gif,
+    make_navigator,
+    quicklook,
+    summary_table,
+)
 from .raw_store import RawFrameStore
 from .segmentation import (
     MaskStack,
     compare_regions,
     composition_ratio,
+    distance_bands,
     elemental_map,
     erode_masks,
     jump_ratio_map,
@@ -61,7 +71,11 @@ __all__ = [
     "align_frames",
     "align_to_zlp",
     "composition_ratio",
-    "computed",
+    "classify_signals",
+    "frame_range",
+    "image_streams",
+    "save_frame_gif",
+    "distance_bands",
     "describe_folder",
     "edge_intensity",
     "edge_table",
