@@ -35,6 +35,7 @@ __all__ = [
     "MaskStack",
     "compare_regions",
     "composition_ratio",
+    "distance_bands",
     "erode_masks",
     "elemental_map",
     "jump_ratio_map",
@@ -504,6 +505,158 @@ def erode_masks(mask_stack, iterations=1, classes=None):
         np.round(100 * eroded.area_fraction.mean(axis=0), 2).tolist(),
     )
     return eroded
+
+
+def distance_bands(
+    mask_stack,
+    around,
+    edges,
+    *,
+    labels=None,
+    within=None,
+    scale=None,
+    rest_label="rest",
+    outside_label="outside",
+):
+    """Band the field by distance from one class: particle / near / far.
+
+    Thresholding splits by *brightness*; this splits by *proximity*.  "The
+    support next to the particles" is not an intensity class -- it looks
+    exactly like support everywhere else -- so it has to be defined
+    geometrically.
+
+    Distances come from a Euclidean distance transform, so each pixel is
+    measured to its **nearest** particle.  Shells around neighbouring particles
+    therefore meet rather than overlap, and no pixel is counted twice.
+
+    Parameters
+    ----------
+    around : str or int
+        The class to measure distance from, e.g. ``"Ru"``.
+    edges : sequence of float
+        Band boundaries, starting at 0, in the same units as ``scale``.
+        ``[0, 2.0]`` makes one 0-2 nm shell; ``[0, 1, 2, 4]`` makes three
+        rings, which is what you want for a profile away from the surface.
+    labels : sequence of str, optional
+        Names for ``[around, band0, band1, ..., rest]``.  Defaults are derived
+        from the edges.
+    within : str or int, optional
+        Confine the bands to this class -- normally the support, so a shell
+        around a particle at the edge of a flake does not run out into vacuum
+        and dilute the spectrum with nothing.
+    scale : float, optional
+        Units per pixel.  Taken from the mask's own navigation axes when
+        available, so ``edges`` can be given in nm; pass ``1.0`` to work in
+        pixels.
+    rest_label : str
+        Name for everything inside ``within`` but beyond the last edge.
+    outside_label : str
+        Name for everything outside ``within`` -- the vacuum, normally.  It is
+        kept as its own class rather than folded into ``rest`` so that the
+        far-support spectrum is not diluted with vacuum, and rather than being
+        dropped so that every pixel stays accounted for.  Only present when
+        ``within`` is given.
+
+    Returns
+    -------
+    MaskStack whose classes tile the frame, ordered
+    ``[around, band0, ..., rest]``, plus ``outside`` when ``within`` is used.
+
+    Notes
+    -----
+    Band this at the resolution the masks were cut at and only then
+    :func:`rebin_masks` onto the spectrum-image grid: a 1 nm shell is 31
+    full-resolution HAADF pixels here but only 8 SI pixels, so banding after
+    reducing would quantise the shell badly.
+    """
+    from scipy.ndimage import distance_transform_edt
+
+    if mask_stack.is_fractional:
+        raise ValueError(
+            "band fractional masks before rebin_masks, while they are still "
+            "boolean at the resolution they were cut at"
+        )
+    edges = [float(v) for v in edges]
+    if len(edges) < 2 or edges[0] != 0.0 or any(
+        b <= a for a, b in zip(edges, edges[1:])
+    ):
+        raise ValueError(f"edges must start at 0 and increase, got {edges}")
+
+    source = mask_stack.index(around) if isinstance(around, str) else int(around)
+    keep = None
+    if within is not None:
+        keep = mask_stack.index(within) if isinstance(within, str) else int(within)
+
+    if scale is None:
+        spatial = [a for a in mask_stack.nav_axes if a.get("units") in ("nm", "um", "µm")]
+        scale = float(spatial[-1]["scale"]) if spatial else 1.0
+        _logger.info("distance_bands: using %.5g units/pixel from the mask axes", scale)
+    scale = float(scale)
+
+    n_bands = len(edges) - 1
+    n_classes = n_bands + 2 + (1 if keep is not None else 0)
+    if labels is None:
+        labels = [mask_stack.labels[source]]
+        labels += [f"{edges[i]:g}-{edges[i + 1]:g}" for i in range(n_bands)]
+        labels.append(rest_label)
+        if keep is not None:
+            labels.append(outside_label)
+    labels = list(labels)
+    if len(labels) == n_classes - 1 and keep is not None:
+        labels.append(outside_label)        # caller named the bands only
+    if len(labels) != n_classes:
+        extra = f" and '{outside_label}'" if keep is not None else ""
+        raise ValueError(
+            f"{len(labels)} labels for {n_classes} classes "
+            f"(the source, {n_bands} band(s), '{rest_label}'{extra})"
+        )
+
+    shape = mask_stack.masks.shape
+    out = np.zeros((shape[0], n_classes) + shape[2:], dtype=bool)
+    for frame in range(shape[0]):
+        particle = mask_stack.masks[frame, source]
+        out[frame, 0] = particle
+        allowed = np.ones(shape[2:], dtype=bool)
+        if keep is not None:
+            allowed = mask_stack.masks[frame, keep].copy()
+        allowed &= ~particle
+
+        rest_index = n_bands + 1
+        if not particle.any():
+            _logger.warning(
+                "frame %d has no '%s' pixels; its bands are empty",
+                frame, mask_stack.labels[source],
+            )
+            out[frame, rest_index] = allowed
+        else:
+            distance = distance_transform_edt(~particle) * scale
+            assigned = np.zeros(shape[2:], dtype=bool)
+            for band in range(n_bands):
+                inner, outer = edges[band], edges[band + 1]
+                ring = (distance > inner) & (distance <= outer) & allowed & ~assigned
+                out[frame, 1 + band] = ring
+                assigned |= ring
+            out[frame, rest_index] = allowed & ~assigned
+
+        if keep is not None:
+            # Everything outside `within` stays its own class, so the output
+            # still tiles the frame and vacuum never leaks into `rest`.
+            out[frame, -1] = ~out[frame, :-1].any(axis=0)
+
+    banded = MaskStack(
+        masks=out,
+        labels=labels,
+        thresholds=mask_stack.thresholds.copy(),
+        source_title=mask_stack.source_title,
+        nav_axes=list(mask_stack.nav_axes),
+    )
+    _logger.info(
+        "distance_bands around '%s': area %% %s",
+        mask_stack.labels[source],
+        {label: round(100 * value, 2)
+         for label, value in zip(labels, banded.area_fraction.mean(axis=0))},
+    )
+    return banded
 
 
 def masked_spectra(signal, mask_stack, *, mode="sum", dtype="float32"):
